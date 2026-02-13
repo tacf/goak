@@ -6,7 +6,10 @@ import (
 	"goak/internal/goak/layout"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
+	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 )
 
@@ -19,6 +22,9 @@ type Window struct {
 	windowScale          float64
 	scaleHotkeys         bool
 	onWindowScaleChanged func(float64)
+	debugMode            bool
+	hoveredRect          layout.Rect
+	hasHoveredRect       bool
 
 	ui *components.UI
 
@@ -129,6 +135,10 @@ func (win *Window) Update() error {
 		return nil
 	}
 
+	if inpututil.IsKeyJustPressed(ebiten.KeyF12) {
+		win.debugMode = !win.debugMode
+	}
+
 	if win.scaleHotkeys {
 		win.handleScaleHotkeys()
 	}
@@ -150,6 +160,7 @@ func (win *Window) Update() error {
 	for _, m := range win.ui.MenuBars() {
 		m.OnMouseMove(lx, ly)
 	}
+	win.updateHoveredElement(lx, ly)
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		consumed := false
@@ -224,6 +235,25 @@ func (win *Window) Draw(screen *ebiten.Image) {
 	// Layer 2 (top-most): dropdowns always render above everything else.
 	for _, m := range win.ui.MenuBars() {
 		m.DrawDropdown(win.canvas, face, menuTheme)
+	}
+
+	if win.debugMode {
+		if win.hasHoveredRect {
+			drawDebugOutline(win.canvas, win.hoveredRect, colors.Yellow)
+		}
+		const label = "Debug Mode"
+		lw := font.MeasureString(face, label).Ceil()
+		lh := face.Metrics().Height.Ceil()
+		const margin = 8
+		x := logicalW - lw - margin
+		y := logicalH - margin
+		if x < margin {
+			x = margin
+		}
+		if y < lh+margin {
+			y = lh + margin
+		}
+		text.Draw(win.canvas, label, face, x, y, colors.Yellow)
 	}
 
 	screen.Fill(bg)
@@ -301,4 +331,71 @@ func windowSize(fallbackW, fallbackH int) (int, int) {
 		h = fallbackH
 	}
 	return w, h
+}
+
+func (win *Window) updateHoveredElement(x, y float64) {
+	win.hasHoveredRect = false
+	if !win.debugMode || win.ui == nil {
+		return
+	}
+
+	menus := win.ui.MenuBars()
+	for i := len(menus) - 1; i >= 0; i-- {
+		m := menus[i]
+		if m.IsOpen() {
+			subRects := m.OpenSubItemRects()
+			for j := len(subRects) - 1; j >= 0; j-- {
+				if pointInRect(x, y, subRects[j]) {
+					win.hoveredRect = subRects[j]
+					win.hasHoveredRect = true
+					return
+				}
+			}
+		}
+	}
+	for i := len(menus) - 1; i >= 0; i-- {
+		m := menus[i]
+		topRects := m.TopItemRects()
+		for j := len(topRects) - 1; j >= 0; j-- {
+			if pointInRect(x, y, topRects[j]) {
+				win.hoveredRect = topRects[j]
+				win.hasHoveredRect = true
+				return
+			}
+		}
+		if pointInRect(x, y, m.Bounds()) {
+			win.hoveredRect = m.Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+
+	buttons := win.ui.Buttons()
+	for i := len(buttons) - 1; i >= 0; i-- {
+		if pointInRect(x, y, buttons[i].Bounds()) {
+			win.hoveredRect = buttons[i].Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+	panels := win.ui.Panels()
+	for i := len(panels) - 1; i >= 0; i-- {
+		if pointInRect(x, y, panels[i].Bounds()) {
+			win.hoveredRect = panels[i].Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+}
+
+func drawDebugOutline(dst *ebiten.Image, r layout.Rect, c colors.Color) {
+	const t = 2.0
+	ebitenutil.DrawRect(dst, r.X, r.Y, r.W, t, c)
+	ebitenutil.DrawRect(dst, r.X, r.Y+r.H-t, r.W, t, c)
+	ebitenutil.DrawRect(dst, r.X, r.Y, t, r.H, c)
+	ebitenutil.DrawRect(dst, r.X+r.W-t, r.Y, t, r.H, c)
+}
+
+func pointInRect(x, y float64, r layout.Rect) bool {
+	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }
