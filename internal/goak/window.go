@@ -4,16 +4,15 @@ import (
 	"goak/internal/goak/colors"
 	"goak/internal/goak/components"
 	"goak/internal/goak/layout"
+	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 )
 
-// Window wraps the runtime window management.
 type Window struct {
 	title                string
 	width                int
@@ -31,7 +30,7 @@ type Window struct {
 	canvas *ebiten.Image
 }
 
-// Config holds window options.
+// Window config options
 type Config struct {
 	Title       string
 	Width       int
@@ -40,9 +39,8 @@ type Config struct {
 	WindowScale float64
 }
 
-// InitWindow creates and configures a new window with the given title and size.
 func InitWindow(title string, width, height int) *Window {
-	return New(Config{
+	return newWindow(Config{
 		Title:       title,
 		Width:       width,
 		Height:      height,
@@ -51,8 +49,8 @@ func InitWindow(title string, width, height int) *Window {
 	})
 }
 
-// New creates and configures a new window. Call Destroy when done.
-func New(cfg Config) *Window {
+// Internal function to initialize window
+func newWindow(cfg Config) *Window {
 	return &Window{
 		title:       cfg.Title,
 		width:       cfg.Width,
@@ -66,18 +64,15 @@ func (win *Window) attachUI(ui *components.UI) {
 	win.ui = ui
 }
 
-// SetTitle updates the window title.
 func (win *Window) SetTitle(title string) {
 	win.title = title
 	ebiten.SetWindowTitle(title)
 }
 
-// SetAutoDPI toggles automatic HiDPI scaling using ebiten.DeviceScaleFactor.
 func (win *Window) SetAutoDPI(enabled bool) {
 	win.autoDPI = enabled
 }
 
-// AutoDPI reports whether automatic HiDPI scaling is enabled.
 func (win *Window) AutoDPI() bool {
 	return win.autoDPI
 }
@@ -95,7 +90,6 @@ func (win *Window) SetWindowScale(scale float64) {
 	}
 }
 
-// WindowScale returns the runtime window scale multiplier.
 func (win *Window) WindowScale() float64 {
 	if win.windowScale <= 0 {
 		return 1
@@ -108,14 +102,18 @@ func (win *Window) SetScaleHotkeysEnabled(enabled bool) {
 	win.scaleHotkeys = enabled
 }
 
-// ScaleHotkeysEnabled reports whether built-in scale shortcuts are enabled.
 func (win *Window) ScaleHotkeysEnabled() bool {
 	return win.scaleHotkeys
 }
 
-// SetOnWindowScaleChanged sets a callback invoked when WindowScale changes.
 func (win *Window) SetOnWindowScaleChanged(fn func(float64)) {
 	win.onWindowScaleChanged = fn
+}
+
+// PointWithinBounds returns true if the point (x, y) is inside the given rectangle.
+// This is a convenience wrapper around rendering.PointWithinBounds.
+func (win *Window) PointWithinBounds(x, y float64, r layout.Rect) bool {
+	return rendering.PointWithinBounds(x, y, r)
 }
 
 // Run runs the window event loop until the window is closed.
@@ -126,7 +124,6 @@ func (win *Window) Run() {
 	_ = ebiten.RunGame(win)
 }
 
-// Destroy closes the window and frees any additional resources.
 func (win *Window) Destroy() {}
 
 // Update handles input and layout.
@@ -162,6 +159,24 @@ func (win *Window) Update() error {
 	}
 	win.updateHoveredElement(lx, ly)
 
+	for _, s := range win.ui.Sliders() {
+		if s.IsDragging() {
+			s.UpdateValue(lx)
+		}
+	}
+
+	for _, rg := range win.ui.RadioGroups() {
+		hitIndex := rg.HitTest(lx, ly)
+		rg.SetHovered(hitIndex)
+	}
+
+	for _, dd := range win.ui.Dropdowns() {
+		if dd.IsOpen() {
+			hitIndex := dd.HitTestList(lx, ly)
+			dd.SetHovered(hitIndex)
+		}
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		consumed := false
 		for _, m := range win.ui.MenuBars() {
@@ -175,8 +190,69 @@ func (win *Window) Update() error {
 				bound := b.Bounds()
 				if lx >= bound.X && lx < bound.X+bound.W && ly >= bound.Y && ly < bound.Y+bound.H {
 					win.ui.ButtonClicked(i)
+					consumed = true
 					break
 				}
+			}
+		}
+		if !consumed {
+			for _, cb := range win.ui.Checkboxes() {
+				if rendering.PointWithinBounds(lx, ly, cb.Bounds()) {
+					cb.Toggle()
+					consumed = true
+					break
+				}
+			}
+		}
+		if !consumed {
+			for _, rg := range win.ui.RadioGroups() {
+				hitIndex := rg.HitTest(lx, ly)
+				if hitIndex >= 0 {
+					rg.Select(hitIndex)
+					consumed = true
+					break
+				}
+			}
+		}
+		if !consumed {
+			for _, s := range win.ui.Sliders() {
+				if rendering.PointWithinBounds(lx, ly, s.Bounds()) {
+					s.StartDrag()
+					s.UpdateValue(lx)
+					consumed = true
+					break
+				}
+			}
+		}
+		if !consumed {
+			for _, dd := range win.ui.Dropdowns() {
+				if dd.IsOpen() {
+					hitIndex := dd.HitTestList(lx, ly)
+					if hitIndex >= 0 {
+						dd.Select(hitIndex)
+						consumed = true
+						break
+					}
+					// Close dropdown if clicked outside the list
+					listBounds := dd.ListBounds()
+					if !rendering.PointWithinBounds(lx, ly, listBounds) {
+						dd.Close()
+						consumed = true
+						break
+					}
+				} else if rendering.PointWithinBounds(lx, ly, dd.Bounds()) {
+					dd.Open()
+					consumed = true
+					break
+				}
+			}
+		}
+	}
+
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		for _, s := range win.ui.Sliders() {
+			if s.IsDragging() {
+				s.StopDrag()
 			}
 		}
 	}
@@ -184,7 +260,6 @@ func (win *Window) Update() error {
 	return nil
 }
 
-// Draw renders the UI by delegating to each component's draw methods.
 func (win *Window) Draw(screen *ebiten.Image) {
 	if win.ui == nil {
 		return
@@ -227,19 +302,42 @@ func (win *Window) Draw(screen *ebiten.Image) {
 		b.Draw(win.canvas, face, buttonTheme)
 	}
 
-	// Layer 1: menu bar strips and top-level labels.
+	checkboxTheme := components.DefaultCheckboxTheme()
+	for _, cb := range win.ui.Checkboxes() {
+		cb.Draw(win.canvas, face, checkboxTheme, false)
+	}
+
+	radioTheme := components.DefaultRadioTheme()
+	for _, rg := range win.ui.RadioGroups() {
+		rg.Draw(win.canvas, face, radioTheme)
+	}
+
+	sliderTheme := components.DefaultSliderTheme()
+	for _, s := range win.ui.Sliders() {
+		s.Draw(win.canvas, face, sliderTheme)
+	}
+
+	dropdownTheme := components.DefaultDropdownTheme()
+	for _, dd := range win.ui.Dropdowns() {
+		dd.Draw(win.canvas, face, dropdownTheme)
+	}
+
 	for _, m := range win.ui.MenuBars() {
 		m.DrawBar(win.canvas, face, menuTheme)
 	}
 
-	// Layer 2 (top-most): dropdowns always render above everything else.
 	for _, m := range win.ui.MenuBars() {
 		m.DrawDropdown(win.canvas, face, menuTheme)
 	}
 
+	contextMenuTheme := components.DefaultContextMenuTheme()
+	for _, cm := range win.ui.ContextMenus() {
+		cm.Draw(win.canvas, face, contextMenuTheme)
+	}
+
 	if win.debugMode {
 		if win.hasHoveredRect {
-			drawDebugOutline(win.canvas, win.hoveredRect, colors.Yellow)
+			rendering.DrawStrokeRect(win.canvas, win.hoveredRect.X, win.hoveredRect.Y, win.hoveredRect.W, win.hoveredRect.H, 2.0, colors.Yellow)
 		}
 		const label = "Debug Mode"
 		lw := font.MeasureString(face, label).Ceil()
@@ -277,7 +375,7 @@ func (win *Window) effectiveScale(rootScale float64) float64 {
 	scale := normalizeScale(rootScale)
 	scale *= win.WindowScale()
 	if win.autoDPI {
-		dpi := ebiten.DeviceScaleFactor()
+		dpi := ebiten.Monitor().DeviceScaleFactor()
 		if dpi > 0 {
 			scale *= dpi
 		}
@@ -345,7 +443,7 @@ func (win *Window) updateHoveredElement(x, y float64) {
 		if m.IsOpen() {
 			subRects := m.OpenSubItemRects()
 			for j := len(subRects) - 1; j >= 0; j-- {
-				if pointInRect(x, y, subRects[j]) {
+				if rendering.PointWithinBounds(x, y, subRects[j]) {
 					win.hoveredRect = subRects[j]
 					win.hasHoveredRect = true
 					return
@@ -357,13 +455,13 @@ func (win *Window) updateHoveredElement(x, y float64) {
 		m := menus[i]
 		topRects := m.TopItemRects()
 		for j := len(topRects) - 1; j >= 0; j-- {
-			if pointInRect(x, y, topRects[j]) {
+			if rendering.PointWithinBounds(x, y, topRects[j]) {
 				win.hoveredRect = topRects[j]
 				win.hasHoveredRect = true
 				return
 			}
 		}
-		if pointInRect(x, y, m.Bounds()) {
+		if rendering.PointWithinBounds(x, y, m.Bounds()) {
 			win.hoveredRect = m.Bounds()
 			win.hasHoveredRect = true
 			return
@@ -372,7 +470,7 @@ func (win *Window) updateHoveredElement(x, y float64) {
 
 	buttons := win.ui.Buttons()
 	for i := len(buttons) - 1; i >= 0; i-- {
-		if pointInRect(x, y, buttons[i].Bounds()) {
+		if rendering.PointWithinBounds(x, y, buttons[i].Bounds()) {
 			win.hoveredRect = buttons[i].Bounds()
 			win.hasHoveredRect = true
 			return
@@ -380,22 +478,10 @@ func (win *Window) updateHoveredElement(x, y float64) {
 	}
 	panels := win.ui.Panels()
 	for i := len(panels) - 1; i >= 0; i-- {
-		if pointInRect(x, y, panels[i].Bounds()) {
+		if rendering.PointWithinBounds(x, y, panels[i].Bounds()) {
 			win.hoveredRect = panels[i].Bounds()
 			win.hasHoveredRect = true
 			return
 		}
 	}
-}
-
-func drawDebugOutline(dst *ebiten.Image, r layout.Rect, c colors.Color) {
-	const t = 2.0
-	ebitenutil.DrawRect(dst, r.X, r.Y, r.W, t, c)
-	ebitenutil.DrawRect(dst, r.X, r.Y+r.H-t, r.W, t, c)
-	ebitenutil.DrawRect(dst, r.X, r.Y, t, r.H, c)
-	ebitenutil.DrawRect(dst, r.X+r.W-t, r.Y, t, r.H, c)
-}
-
-func pointInRect(x, y float64, r layout.Rect) bool {
-	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }

@@ -3,11 +3,9 @@ package components
 import (
 	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
+	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 )
 
@@ -261,7 +259,7 @@ func (m *MenuBar) openDropdownWidth(item MenuItem) float64 {
 
 func (m *MenuBar) hitTopItem(x, y float64) int {
 	for i, r := range m.TopItemRects() {
-		if pointInRect(x, y, r) {
+		if rendering.PointWithinBounds(x, y, r) {
 			return i
 		}
 	}
@@ -274,7 +272,7 @@ func (m *MenuBar) hitSubItem(x, y float64, includeSeparator bool) int {
 		return -1
 	}
 	for i, r := range rects {
-		if pointInRect(x, y, r) {
+		if rendering.PointWithinBounds(x, y, r) {
 			if !includeSeparator && m.Items[m.openIndex].SubItems[i].Kind == MenuEntrySeparator {
 				return -1
 			}
@@ -284,9 +282,6 @@ func (m *MenuBar) hitSubItem(x, y float64, includeSeparator bool) int {
 	return -1
 }
 
-func pointInRect(x, y float64, r layout.Rect) bool {
-	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
-}
 
 const (
 	menuBarPaddingX        = 8.0
@@ -330,18 +325,18 @@ func DefaultMenuTheme() MenuTheme {
 // DrawBar draws the menu strip and top-level items.
 func (m *MenuBar) DrawBar(dst *ebiten.Image, face font.Face, theme MenuTheme) {
 	mb := m.Bounds()
-	vector.FillRect(dst, float32(mb.X), float32(mb.Y), float32(mb.W), float32(mb.H), theme.Fill, true)
-	drawMenuStrokeRect(dst, mb.X, mb.Y, mb.W, mb.H, theme.Stroke)
+	rendering.FillRect(dst, mb.X, mb.Y, mb.W, mb.H, theme.Fill)
+	rendering.DrawStrokeRect(dst, mb.X, mb.Y, mb.W, mb.H, 1.0, theme.Stroke)
 
 	topRects := m.TopItemRects()
 	for i, r := range topRects {
 		if m.HoverTopIndex() == i {
-			vector.FillRect(dst, float32(r.X), float32(r.Y), float32(r.W), float32(r.H), theme.Hover, true)
+			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Hover)
 		}
 		if m.OpenIndex() == i {
-			vector.FillRect(dst, float32(r.X), float32(r.Y), float32(r.W), float32(r.H), theme.Active, true)
+			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Active)
 		}
-		text.Draw(dst, m.Items[i].Label, face, int(r.X)+8, int(r.Y+r.H/2)+5, theme.Text)
+		rendering.DrawText(dst, m.Items[i].Label, face, int(r.X)+8, int(r.Y+r.H/2)+5, theme.Text)
 	}
 }
 
@@ -352,8 +347,8 @@ func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face font.Face, theme MenuThem
 	}
 	drop := m.OpenSubMenuBounds()
 	if drop.W > 0 && drop.H > 0 {
-		vector.FillRect(dst, float32(drop.X), float32(drop.Y), float32(drop.W), float32(drop.H), theme.Fill, true)
-		drawMenuStrokeRect(dst, drop.X, drop.Y, drop.W, drop.H, theme.Stroke)
+		rendering.FillRect(dst, drop.X, drop.Y, drop.W, drop.H, theme.Fill)
+		rendering.DrawStrokeRect(dst, drop.X, drop.Y, drop.W, drop.H, 1.0, theme.Stroke)
 	}
 
 	subRects := m.OpenSubItemRects()
@@ -369,20 +364,13 @@ func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face font.Face, theme MenuThem
 		entry := subItems[i]
 		if entry.Kind == MenuEntrySeparator {
 			y := r.Y + r.H/2
-			ebitenutil.DrawRect(dst, r.X+6, y, r.W-12, 1, theme.Separator)
+			rendering.FillRect(dst, r.X+6, y, r.W-12, 1, theme.Separator)
 			continue
 		}
 		if m.HoverSubIndex() == i {
-			vector.FillRect(dst, float32(r.X), float32(r.Y), float32(r.W), float32(r.H), theme.Hover, true)
+			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Hover)
 		}
-		text.Draw(dst, entry.Label, face, int(r.X)+10, int(r.Y+r.H/2)+5, theme.Text)
+		rendering.DrawText(dst, entry.Label, face, int(r.X)+10, int(r.Y+r.H/2)+5, theme.Text)
 	}
 }
 
-func drawMenuStrokeRect(dst *ebiten.Image, x, y, w, h float64, c colors.Color) {
-	const t = 1.0
-	ebitenutil.DrawRect(dst, x, y, w, t, c)
-	ebitenutil.DrawRect(dst, x, y+h-t, w, t, c)
-	ebitenutil.DrawRect(dst, x, y, t, h, c)
-	ebitenutil.DrawRect(dst, x+w-t, y, t, h, c)
-}

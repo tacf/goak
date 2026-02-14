@@ -4,11 +4,16 @@ import "goak/internal/goak/layout"
 
 // UI holds the root and all panels/buttons for layout and drawing.
 type UI struct {
-	root    *layout.Container
-	rootEl  *Root
-	panels  []*Panel
-	buttons []*Button
-	menus   []*MenuBar
+	root         *layout.Container
+	rootEl       *Root
+	panels       []*Panel
+	buttons      []*Button
+	menus        []*MenuBar
+	checkboxes   []*Checkbox
+	radioGroups  []*RadioGroup
+	sliders      []*Slider
+	dropdowns    []*Dropdown
+	contextMenus []*ContextMenu
 }
 
 // NewUI creates a UI with an empty root. Use Root() to get the root element and build the tree.
@@ -53,4 +58,29 @@ func (u *UI) ButtonClicked(index int) {
 	if u.buttons[index].OnClick != nil {
 		u.buttons[index].OnClick()
 	}
+}
+
+// Checkboxes returns all checkboxes (for rendering and hit-test).
+func (u *UI) Checkboxes() []*Checkbox {
+	return u.checkboxes
+}
+
+// RadioGroups returns all radio groups (for rendering and hit-test).
+func (u *UI) RadioGroups() []*RadioGroup {
+	return u.radioGroups
+}
+
+// Sliders returns all sliders (for rendering and hit-test).
+func (u *UI) Sliders() []*Slider {
+	return u.sliders
+}
+
+// Dropdowns returns all dropdowns (for rendering and hit-test).
+func (u *UI) Dropdowns() []*Dropdown {
+	return u.dropdowns
+}
+
+// ContextMenus returns all context menus (for rendering and hit-test).
+func (u *UI) ContextMenus() []*ContextMenu {
+	return u.contextMenus
 }

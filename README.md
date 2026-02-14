@@ -3,16 +3,21 @@
 Go Application Kit is a small library for building cross-platform UI apps.
 It uses Ebiten for windowing/input/rendering and focuses on rapid prototyping.
 
-It includes a layout layer inspired by Clay.h and simple named colors like
-`colors.LightGray`.
+
+Features:
+- Layout management inspired by Clay.h
+- Handy utilities like named colors (Example, `colors.LightGray`)
+- GPU Accelerated
+
+![Demo app showcasing most widgets and features](images/demo.png)
 
 ## Run examples
 
 ```bash
-go run ./examples/basic
-go run ./examples/menubar
-go run ./examples/scaling
+go run .examples/<example>/main.go
 ```
+
+Check `examples/demo/main.go` for a widget/features showcase
 
 **Build:** `go build -o bin/basic ./examples/basic` (on Windows add `-ldflags="-H windowsgui"`).
 
@@ -25,5 +30,3 @@ import (
 	"goak/internal/goak/layout"
 )
 ```
-
-App flow: `goak.NewApp()` -> `InitWindow(title, w, h)` -> build UI -> `app.Run(ui)`.

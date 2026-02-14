@@ -3,11 +3,9 @@ package components
 import (
 	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
+	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 )
 
@@ -43,24 +41,14 @@ func DefaultButtonTheme() ButtonTheme {
 	}
 }
 
-// Draw renders the button background, border, and label text.
 func (b *Button) Draw(dst *ebiten.Image, face font.Face, theme ButtonTheme) {
 	bound := b.Bounds()
-	vector.FillRect(dst, float32(bound.X), float32(bound.Y), float32(bound.W), float32(bound.H), theme.Fill, true)
-	drawButtonStrokeRect(dst, bound.X, bound.Y, bound.W, bound.H, theme.Stroke)
+	rendering.FillRect(dst, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
+	rendering.DrawStrokeRect(dst, bound.X, bound.Y, bound.W, bound.H, 1.0, theme.Stroke)
 
-	tb := text.BoundString(face, b.Label)
-	tw := tb.Dx()
-	th := tb.Dy()
+	tw := font.MeasureString(face, b.Label).Ceil()
+	th := face.Metrics().Height.Ceil()
 	tx := int(bound.X+bound.W/2) - tw/2
 	ty := int(bound.Y+bound.H/2) + th/2 - 2
-	text.Draw(dst, b.Label, face, tx, ty, theme.Text)
-}
-
-func drawButtonStrokeRect(dst *ebiten.Image, x, y, w, h float64, c colors.Color) {
-	const t = 1.0
-	ebitenutil.DrawRect(dst, x, y, w, t, c)
-	ebitenutil.DrawRect(dst, x, y+h-t, w, t, c)
-	ebitenutil.DrawRect(dst, x, y, t, h, c)
-	ebitenutil.DrawRect(dst, x+w-t, y, t, h, c)
+	rendering.DrawText(dst, b.Label, face, tx, ty, theme.Text)
 }

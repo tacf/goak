@@ -22,7 +22,7 @@ func (a *App) InitWindow(title string, width, height int) {
 
 // InitWindowWithConfig creates and configures the window with explicit options.
 func (a *App) InitWindowWithConfig(cfg Config) {
-	a.win = New(cfg)
+	a.win = newWindow(cfg)
 }
 
 // SetAutoDPI toggles automatic HiDPI scaling on the app window.

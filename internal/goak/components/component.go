@@ -3,10 +3,9 @@ package components
 import (
 	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
+	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 // Root is the root element. Use ui.Root() to get it, then root.CreatePanel(...) or root.AddPanel(panel) to build the tree.
@@ -137,6 +136,63 @@ func (p *Panel) AddMenuBar(m *MenuBar) {
 	p.ui.menus = append(p.ui.menus, m)
 }
 
+// CreateCheckbox creates a new checkbox and adds it to this panel. Returns the checkbox.
+func (p *Panel) CreateCheckbox(width, height layout.Size, label string) *Checkbox {
+	cb := NewCheckbox(width, height, label)
+	p.AddCheckbox(cb)
+	return cb
+}
+
+// AddCheckbox adds an existing checkbox to this panel.
+func (p *Panel) AddCheckbox(cb *Checkbox) {
+	p.c.Children = append(p.c.Children, cb.Container())
+	p.ui.checkboxes = append(p.ui.checkboxes, cb)
+}
+
+// CreateRadioGroup creates a new radio group and adds it to this panel. Returns the radio group.
+func (p *Panel) CreateRadioGroup(width, height layout.Size, options []RadioOption) *RadioGroup {
+	rg := NewRadioGroup(width, height, options)
+	p.AddRadioGroup(rg)
+	return rg
+}
+
+// AddRadioGroup adds an existing radio group to this panel.
+func (p *Panel) AddRadioGroup(rg *RadioGroup) {
+	p.c.Children = append(p.c.Children, rg.Container())
+	p.ui.radioGroups = append(p.ui.radioGroups, rg)
+}
+
+// CreateSlider creates a new slider and adds it to this panel. Returns the slider.
+func (p *Panel) CreateSlider(width, height layout.Size, label string, min, max, initial float64) *Slider {
+	s := NewSlider(width, height, label, min, max, initial)
+	p.AddSlider(s)
+	return s
+}
+
+// AddSlider adds an existing slider to this panel.
+func (p *Panel) AddSlider(s *Slider) {
+	p.c.Children = append(p.c.Children, s.Container())
+	p.ui.sliders = append(p.ui.sliders, s)
+}
+
+// CreateDropdown creates a new dropdown and adds it to this panel. Returns the dropdown.
+func (p *Panel) CreateDropdown(width, height layout.Size, label string, options []DropdownOption) *Dropdown {
+	dd := NewDropdown(width, height, label, options)
+	p.AddDropdown(dd)
+	return dd
+}
+
+// AddDropdown adds an existing dropdown to this panel.
+func (p *Panel) AddDropdown(dd *Dropdown) {
+	p.c.Children = append(p.c.Children, dd.Container())
+	p.ui.dropdowns = append(p.ui.dropdowns, dd)
+}
+
+// AddContextMenu adds a context menu to this panel (not part of layout tree).
+func (p *Panel) AddContextMenu(cm *ContextMenu) {
+	p.ui.contextMenus = append(p.ui.contextMenus, cm)
+}
+
 // PanelTheme controls panel drawing colors.
 type PanelTheme struct {
 	DefaultFill colors.Color
@@ -151,21 +207,12 @@ func DefaultPanelTheme() PanelTheme {
 	}
 }
 
-// Draw renders the panel rectangle with fill and border.
 func (p *Panel) Draw(dst *ebiten.Image, theme PanelTheme) {
 	b := p.Bounds()
 	fill := theme.DefaultFill
 	if p.Background != nil {
 		fill = *p.Background
 	}
-	vector.FillRect(dst, float32(b.X), float32(b.Y), float32(b.W), float32(b.H), fill, true)
-	drawPanelStrokeRect(dst, b.X, b.Y, b.W, b.H, theme.Stroke)
-}
-
-func drawPanelStrokeRect(dst *ebiten.Image, x, y, w, h float64, c colors.Color) {
-	const t = 1.0
-	ebitenutil.DrawRect(dst, x, y, w, t, c)
-	ebitenutil.DrawRect(dst, x, y+h-t, w, t, c)
-	ebitenutil.DrawRect(dst, x, y, t, h, c)
-	ebitenutil.DrawRect(dst, x+w-t, y, t, h, c)
+	rendering.FillRect(dst, b.X, b.Y, b.W, b.H, fill)
+	rendering.DrawStrokeRect(dst, b.X, b.Y, b.W, b.H, 1.0, theme.Stroke)
 }
