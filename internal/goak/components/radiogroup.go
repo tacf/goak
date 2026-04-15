@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // RadioOption represents a single option in a radio group.
@@ -17,12 +17,12 @@ type RadioOption struct {
 
 // RadioGroup is a group of mutually exclusive radio buttons.
 type RadioGroup struct {
-	c              *layout.Container
-	Options        []RadioOption
-	SelectedIndex  int
-	OnChanged      func(int, string)
-	itemHeight     float64
-	hoveredIndex   int
+	c             *layout.Container
+	Options       []RadioOption
+	SelectedIndex int
+	OnChanged     func(int, string)
+	itemHeight    float64
+	hoveredIndex  int
 }
 
 // NewRadioGroup creates a standalone radio group. Add it with panel.AddRadioGroup(rg).
@@ -67,7 +67,7 @@ func DefaultRadioTheme() RadioTheme {
 	}
 }
 
-func (rg *RadioGroup) Draw(dst *ebiten.Image, face font.Face, theme RadioTheme) {
+func (rg *RadioGroup) Draw(dst *ebiten.Image, face text.GoTextFace, theme RadioTheme) {
 	bound := rg.Bounds()
 	circleSize := 14.0
 	circleRadius := circleSize / 2
@@ -90,8 +90,7 @@ func (rg *RadioGroup) Draw(dst *ebiten.Image, face font.Face, theme RadioTheme) 
 			rendering.DrawFilledCircle(dst, circleCenterX, circleCenterY, circleRadius, theme.HoverOverlay)
 		}
 		labelX := int(bound.X + circleSize + 8)
-		th := face.Metrics().Height.Ceil()
-		labelY := int(y+rg.itemHeight/2) + th/2 - 2
+		labelY := textTopY(opt.Label, face, y, rg.itemHeight)
 		rendering.DrawText(dst, opt.Label, face, labelX, labelY, theme.Text)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // MenuBarWidthMode controls how the menu bar width is computed.
@@ -323,7 +323,7 @@ func DefaultMenuTheme() MenuTheme {
 }
 
 // DrawBar draws the menu strip and top-level items.
-func (m *MenuBar) DrawBar(dst *ebiten.Image, face font.Face, theme MenuTheme) {
+func (m *MenuBar) DrawBar(dst *ebiten.Image, face text.GoTextFace, theme MenuTheme) {
 	mb := m.Bounds()
 	rendering.FillRect(dst, mb.X, mb.Y, mb.W, mb.H, theme.Fill)
 	rendering.DrawStrokeRect(dst, mb.X, mb.Y, mb.W, mb.H, 1.0, theme.Stroke)
@@ -336,12 +336,13 @@ func (m *MenuBar) DrawBar(dst *ebiten.Image, face font.Face, theme MenuTheme) {
 		if m.OpenIndex() == i {
 			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Active)
 		}
-		rendering.DrawText(dst, m.Items[i].Label, face, int(r.X)+8, int(r.Y+r.H/2)+5, theme.Text)
+		textY := textTopY(m.Items[i].Label, face, r.Y, r.H)
+		rendering.DrawText(dst, m.Items[i].Label, face, int(r.X)+8, textY, theme.Text)
 	}
 }
 
 // DrawDropdown draws the currently open dropdown, if any.
-func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face font.Face, theme MenuTheme) {
+func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face text.GoTextFace, theme MenuTheme) {
 	if !m.IsOpen() {
 		return
 	}
@@ -370,7 +371,8 @@ func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face font.Face, theme MenuThem
 		if m.HoverSubIndex() == i {
 			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Hover)
 		}
-		rendering.DrawText(dst, entry.Label, face, int(r.X)+10, int(r.Y+r.H/2)+5, theme.Text)
+		textY := textTopY(entry.Label, face, r.Y, r.H)
+		rendering.DrawText(dst, entry.Label, face, int(r.X)+10, textY, theme.Text)
 	}
 }
 

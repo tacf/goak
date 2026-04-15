@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // Button is a clickable control with a label.
@@ -41,14 +41,14 @@ func DefaultButtonTheme() ButtonTheme {
 	}
 }
 
-func (b *Button) Draw(dst *ebiten.Image, face font.Face, theme ButtonTheme) {
+func (b *Button) Draw(dst *ebiten.Image, face text.GoTextFace, theme ButtonTheme) {
 	bound := b.Bounds()
 	rendering.FillRect(dst, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
 	rendering.DrawStrokeRect(dst, bound.X, bound.Y, bound.W, bound.H, 1.0, theme.Stroke)
 
-	tw := font.MeasureString(face, b.Label).Ceil()
-	th := face.Metrics().Height.Ceil()
-	tx := int(bound.X+bound.W/2) - tw/2
-	ty := int(bound.Y+bound.H/2) + th/2 - 2
-	rendering.DrawText(dst, b.Label, face, tx, ty, theme.Text)
+	tw, th := text.Measure(b.Label, &face, 0)
+	tx := bound.X + (bound.W-tw)/2
+	ty := bound.Y + (bound.H-th)/2
+
+	rendering.DrawText(dst, b.Label, face, int(tx), int(ty), theme.Text)
 }

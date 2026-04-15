@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // Checkbox is a toggleable control with a label.
@@ -48,7 +48,7 @@ func DefaultCheckboxTheme() CheckboxTheme {
 	}
 }
 
-func (cb *Checkbox) Draw(dst *ebiten.Image, face font.Face, theme CheckboxTheme, hovered bool) {
+func (cb *Checkbox) Draw(dst *ebiten.Image, face text.GoTextFace, theme CheckboxTheme, hovered bool) {
 	bound := cb.Bounds()
 	boxSize := 16.0
 	boxY := bound.Y + (bound.H-boxSize)/2
@@ -66,8 +66,7 @@ func (cb *Checkbox) Draw(dst *ebiten.Image, face font.Face, theme CheckboxTheme,
 	}
 
 	labelX := int(bound.X + boxSize + 8)
-	th := face.Metrics().Height.Ceil()
-	labelY := int(bound.Y+bound.H/2) + th/2 - 2
+	labelY := textTopY(cb.Label, face, bound.Y, bound.H)
 	rendering.DrawText(dst, cb.Label, face, labelX, labelY, theme.Text)
 }
 

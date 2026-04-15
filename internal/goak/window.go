@@ -1,16 +1,18 @@
 package goak
 
 import (
+	"bytes"
 	"goak/internal/goak/colors"
 	"goak/internal/goak/components"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
+	"log"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 type Window struct {
@@ -27,7 +29,8 @@ type Window struct {
 
 	ui *components.UI
 
-	canvas *ebiten.Image
+	canvas     *ebiten.Image
+	fontSource *text.GoTextFaceSource
 }
 
 // Window config options
@@ -51,12 +54,18 @@ func InitWindow(title string, width, height int) *Window {
 
 // Internal function to initialize window
 func newWindow(cfg Config) *Window {
+	fs, err := text.NewGoTextFaceSource(bytes.NewReader(fonts.MPlus1pRegular_ttf))
+	if err != nil {
+		log.Fatal("error loading font", err)
+	}
+
 	return &Window{
 		title:       cfg.Title,
 		width:       cfg.Width,
 		height:      cfg.Height,
 		autoDPI:     cfg.AutoDPI,
 		windowScale: normalizeScale(cfg.WindowScale),
+		fontSource:  fs,
 	}
 }
 
@@ -77,8 +86,8 @@ func (win *Window) AutoDPI() bool {
 	return win.autoDPI
 }
 
-// SetWindowScale sets additional runtime scale applied on top of root scale
-// and optional device scale. Values <= 0 are ignored.
+// SetWindowScale sets additional runtime scale applied on top of root scale.
+// Values <= 0 are ignored.
 func (win *Window) SetWindowScale(scale float64) {
 	next := normalizeScale(scale)
 	if next == win.windowScale {
@@ -140,20 +149,20 @@ func (win *Window) Update() error {
 		win.handleScaleHotkeys()
 	}
 
-	w, h := windowSize(win.width, win.height)
+	logicalW, logicalH := win.logicalScreenSize()
 
 	root := win.ui.Root()
-	scale := win.effectiveScale(root.Scale)
+	uiScale := win.effectiveUIScale(root.Scale)
 
 	for _, m := range win.ui.MenuBars() {
 		m.SyncWidth()
 	}
 
-	layout.Layout(root.Container(), float64(w)/scale, float64(h)/scale)
+	layout.Layout(root.Container(), float64(logicalW)/uiScale, float64(logicalH)/uiScale)
 
 	mx, my := ebiten.CursorPosition()
-	lx := float64(mx) / scale
-	ly := float64(my) / scale
+	lx := float64(mx) / uiScale
+	ly := float64(my) / uiScale
 	for _, m := range win.ui.MenuBars() {
 		m.OnMouseMove(lx, ly)
 	}
@@ -271,10 +280,16 @@ func (win *Window) Draw(screen *ebiten.Image) {
 	}
 
 	root := win.ui.Root()
-	scale := win.effectiveScale(root.Scale)
+	uiScale := win.effectiveUIScale(root.Scale)
 
-	logicalW := int(float64(screenW) / scale)
-	logicalH := int(float64(screenH) / scale)
+	// When there is no UI zoom, draw directly to the screen for the sharpest result.
+	if uiScale == 1 {
+		win.drawUI(screen)
+		return
+	}
+
+	logicalW := math.Ceil(float64(screenW) / uiScale)
+	logicalH := math.Ceil(float64(screenH) / uiScale)
 	if logicalW <= 0 {
 		logicalW = 1
 	}
@@ -282,82 +297,104 @@ func (win *Window) Draw(screen *ebiten.Image) {
 		logicalH = 1
 	}
 
-	if win.canvas == nil || win.canvas.Bounds().Dx() != logicalW || win.canvas.Bounds().Dy() != logicalH {
-		win.canvas = ebiten.NewImage(logicalW, logicalH)
+	canvasW := int(logicalW)
+	canvasH := int(logicalH)
+	if win.canvas == nil || win.canvas.Bounds().Dx() != canvasW || win.canvas.Bounds().Dy() != canvasH {
+		win.canvas = ebiten.NewImage(canvasW, canvasH)
 	}
 
+	win.drawUI(win.canvas)
+
+	sx := float64(screenW) / logicalW
+	sy := float64(screenH) / logicalH
+	if sx <= 0 {
+		sx = 1
+	}
+	if sy <= 0 {
+		sy = 1
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(sx, sy)
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(win.canvas, op)
+}
+
+func (win *Window) drawUI(dst *ebiten.Image) {
+	screenW, screenH := dst.Bounds().Dx(), dst.Bounds().Dy()
+	logicalW := float64(screenW)
+	logicalH := float64(screenH)
+
 	bg := colors.Black
-	win.canvas.Fill(bg)
+	dst.Fill(bg)
 
 	panelTheme := components.DefaultPanelTheme()
 	buttonTheme := components.DefaultButtonTheme()
 	menuTheme := components.DefaultMenuTheme()
-	face := basicfont.Face7x13
+
+	face := text.GoTextFace{
+		Source: win.fontSource,
+		Size:   20,
+	}
 
 	for _, p := range win.ui.Panels() {
-		p.Draw(win.canvas, panelTheme)
+		p.Draw(dst, panelTheme)
 	}
 
 	for _, b := range win.ui.Buttons() {
-		b.Draw(win.canvas, face, buttonTheme)
+		b.Draw(dst, face, buttonTheme)
 	}
 
 	checkboxTheme := components.DefaultCheckboxTheme()
 	for _, cb := range win.ui.Checkboxes() {
-		cb.Draw(win.canvas, face, checkboxTheme, false)
+		cb.Draw(dst, face, checkboxTheme, false)
 	}
 
 	radioTheme := components.DefaultRadioTheme()
 	for _, rg := range win.ui.RadioGroups() {
-		rg.Draw(win.canvas, face, radioTheme)
+		rg.Draw(dst, face, radioTheme)
 	}
 
 	sliderTheme := components.DefaultSliderTheme()
 	for _, s := range win.ui.Sliders() {
-		s.Draw(win.canvas, face, sliderTheme)
+		s.Draw(dst, face, sliderTheme)
 	}
 
 	dropdownTheme := components.DefaultDropdownTheme()
 	for _, dd := range win.ui.Dropdowns() {
-		dd.Draw(win.canvas, face, dropdownTheme)
+		dd.Draw(dst, face, dropdownTheme)
 	}
 
 	for _, m := range win.ui.MenuBars() {
-		m.DrawBar(win.canvas, face, menuTheme)
+		m.DrawBar(dst, face, menuTheme)
 	}
 
 	for _, m := range win.ui.MenuBars() {
-		m.DrawDropdown(win.canvas, face, menuTheme)
+		m.DrawDropdown(dst, face, menuTheme)
 	}
 
 	contextMenuTheme := components.DefaultContextMenuTheme()
 	for _, cm := range win.ui.ContextMenus() {
-		cm.Draw(win.canvas, face, contextMenuTheme)
+		cm.Draw(dst, face, contextMenuTheme)
 	}
 
 	if win.debugMode {
 		if win.hasHoveredRect {
-			rendering.DrawStrokeRect(win.canvas, win.hoveredRect.X, win.hoveredRect.Y, win.hoveredRect.W, win.hoveredRect.H, 2.0, colors.Yellow)
+			rendering.DrawStrokeRect(dst, win.hoveredRect.X, win.hoveredRect.Y, win.hoveredRect.W, win.hoveredRect.H, 2.0, colors.Yellow)
 		}
 		const label = "Debug Mode"
-		lw := font.MeasureString(face, label).Ceil()
-		lh := face.Metrics().Height.Ceil()
-		const margin = 8
+		lw, lh := text.Measure(label, &face, 0)
+		const margin = 8.0
 		x := logicalW - lw - margin
-		y := logicalH - margin
+		y := logicalH - lh - margin
 		if x < margin {
 			x = margin
 		}
-		if y < lh+margin {
-			y = lh + margin
+		if y < margin {
+			y = margin
 		}
-		text.Draw(win.canvas, label, face, x, y, colors.Yellow)
+		rendering.DrawText(dst, label, face, int(x), int(y), colors.Yellow)
 	}
-
-	screen.Fill(bg)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(scale, scale)
-	screen.DrawImage(win.canvas, op)
 }
 
 // Layout lets Ebiten adjust to the outside window size.
@@ -371,16 +408,42 @@ func (win *Window) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return outsideWidth, outsideHeight
 }
 
-func (win *Window) effectiveScale(rootScale float64) float64 {
-	scale := normalizeScale(rootScale)
-	scale *= win.WindowScale()
-	if win.autoDPI {
-		dpi := ebiten.Monitor().DeviceScaleFactor()
-		if dpi > 0 {
-			scale *= dpi
-		}
+// LayoutF accepts the outside size in device-independent pixels and returns the
+// logical screen size in pixels.
+func (win *Window) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
+	if outsideWidth <= 0 {
+		outsideWidth = float64(win.width)
 	}
-	return scale
+	if outsideHeight <= 0 {
+		outsideHeight = float64(win.height)
+	}
+	dpi := win.currentDPIScale()
+	return outsideWidth * dpi, outsideHeight * dpi
+}
+
+func (win *Window) effectiveUIScale(rootScale float64) float64 {
+	return normalizeScale(rootScale) * win.WindowScale()
+}
+
+func (win *Window) currentDPIScale() float64 {
+	if !win.autoDPI {
+		return 1
+	}
+	m := ebiten.Monitor()
+	if m == nil {
+		return 1
+	}
+	dpi := m.DeviceScaleFactor()
+	if dpi <= 0 {
+		return 1
+	}
+	return dpi
+}
+
+func (win *Window) logicalScreenSize() (int, int) {
+	w, h := windowSize(win.width, win.height)
+	dpi := win.currentDPIScale()
+	return int(math.Ceil(float64(w) * dpi)), int(math.Ceil(float64(h) * dpi))
 }
 
 func (win *Window) handleScaleHotkeys() {

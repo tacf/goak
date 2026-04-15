@@ -5,9 +5,8 @@ import (
 	"goak/internal/goak/layout"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font"
 )
 
 // FillRect draws a filled rectangle.
@@ -43,8 +42,11 @@ func DrawCircleStroke(dst *ebiten.Image, centerX, centerY, radius, thickness flo
 }
 
 // DrawText renders text at the specified position.
-func DrawText(dst *ebiten.Image, str string, face font.Face, x, y int, c colors.Color) {
-	text.Draw(dst, str, face, x, y, c)
+func DrawText(dst *ebiten.Image, str string, face text.GoTextFace, x, y int, c colors.Color) {
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	op.ColorScale.ScaleWithColor(c)
+	text.Draw(dst, str, &face, op)
 }
 
 // PointWithinBounds returns true if the point (x, y) is inside the given rectangle.

@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // DropdownOption represents a single option in a dropdown.
@@ -93,7 +93,7 @@ func DefaultDropdownTheme() DropdownTheme {
 	}
 }
 
-func (dd *Dropdown) Draw(dst *ebiten.Image, face font.Face, theme DropdownTheme) {
+func (dd *Dropdown) Draw(dst *ebiten.Image, face text.GoTextFace, theme DropdownTheme) {
 	bound := dd.Bounds()
 
 	rendering.FillRect(dst, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
@@ -103,8 +103,7 @@ func (dd *Dropdown) Draw(dst *ebiten.Image, face font.Face, theme DropdownTheme)
 	if dd.SelectedIndex >= 0 && dd.SelectedIndex < len(dd.Options) {
 		displayText = dd.Options[dd.SelectedIndex].Label
 	}
-	th := face.Metrics().Height.Ceil()
-	textY := int(bound.Y+bound.H/2) + th/2 - 2
+	textY := textTopY(displayText, face, bound.Y, bound.H)
 	rendering.DrawText(dst, displayText, face, int(bound.X+8), textY, theme.Text)
 
 	arrowSize := 6.0
@@ -127,7 +126,7 @@ func (dd *Dropdown) Draw(dst *ebiten.Image, face font.Face, theme DropdownTheme)
 	}
 }
 
-func (dd *Dropdown) drawList(dst *ebiten.Image, face font.Face, theme DropdownTheme) {
+func (dd *Dropdown) drawList(dst *ebiten.Image, face text.GoTextFace, theme DropdownTheme) {
 	bound := dd.Bounds()
 	listY := bound.Y + bound.H
 	listHeight := float64(len(dd.Options)) * dd.itemHeight
@@ -145,8 +144,7 @@ func (dd *Dropdown) drawList(dst *ebiten.Image, face font.Face, theme DropdownTh
 			rendering.FillRect(dst, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Hover)
 		}
 
-		th := face.Metrics().Height.Ceil()
-		textY := int(itemY+dd.itemHeight/2) + th/2 - 2
+		textY := textTopY(opt.Label, face, itemY, dd.itemHeight)
 		rendering.DrawText(dst, opt.Label, face, int(bound.X+8), textY, theme.Text)
 	}
 }

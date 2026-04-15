@@ -6,7 +6,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // ContextMenuItemKind describes a context menu entry kind.
@@ -113,7 +113,7 @@ func DefaultContextMenuTheme() ContextMenuTheme {
 	}
 }
 
-func (cm *ContextMenu) Draw(dst *ebiten.Image, face font.Face, theme ContextMenuTheme) {
+func (cm *ContextMenu) Draw(dst *ebiten.Image, face text.GoTextFace, theme ContextMenuTheme) {
 	if !cm.isOpen {
 		return
 	}
@@ -139,8 +139,7 @@ func (cm *ContextMenu) Draw(dst *ebiten.Image, face font.Face, theme ContextMenu
 			if item.Disabled {
 				textColor = theme.DisabledText
 			}
-			th := face.Metrics().Height.Ceil()
-			textY := int(currentY+cm.itemHeight/2) + th/2 - 2
+			textY := textTopY(item.Label, face, currentY, cm.itemHeight)
 			rendering.DrawText(dst, item.Label, face, int(cm.x+10), textY, textColor)
 
 			currentY += cm.itemHeight

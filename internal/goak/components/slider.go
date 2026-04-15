@@ -7,7 +7,7 @@ import (
 	"goak/internal/goak/rendering"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"golang.org/x/image/font"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // Slider is a horizontal slider control for selecting values in a range.
@@ -74,16 +74,17 @@ func DefaultSliderTheme() SliderTheme {
 	}
 }
 
-func (s *Slider) Draw(dst *ebiten.Image, face font.Face, theme SliderTheme) {
+func (s *Slider) Draw(dst *ebiten.Image, face text.GoTextFace, theme SliderTheme) {
 	bound := s.Bounds()
 
 	// Calculate dimensions
-	labelHeight := 16.0
+	labelHeight := 0.0
 	trackHeight := 6.0
 	thumbRadius := 8.0
 
 	if s.Label != "" {
-		rendering.DrawText(dst, s.Label, face, int(bound.X), int(bound.Y+labelHeight), theme.Text)
+		labelHeight = textHeight(s.Label, face)
+		rendering.DrawText(dst, s.Label, face, int(bound.X), int(bound.Y), theme.Text)
 	}
 
 	// Track position
@@ -116,7 +117,7 @@ func (s *Slider) Draw(dst *ebiten.Image, face font.Face, theme SliderTheme) {
 	if s.showValue {
 		valueStr := fmt.Sprintf("%.1f", s.Value)
 		valueX := int(bound.X + trackWidth + 8)
-		valueY := int(trackY + trackHeight/2 + 4)
+		valueY := textTopY(valueStr, face, thumbY-thumbRadius, thumbRadius*2)
 		rendering.DrawText(dst, valueStr, face, valueX, valueY, theme.Text)
 	}
 }
