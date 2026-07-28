@@ -19,8 +19,36 @@ const (
 type ContextMenuItem struct {
 	Kind     ContextMenuItemKind
 	Label    string
-	OnClick  func()
 	Disabled bool
+	action   Action
+}
+
+// NewContextMenuAction creates an enabled context menu action.
+func NewContextMenuAction(label string, action Action) ContextMenuItem {
+	return ContextMenuItem{
+		Kind:   ContextMenuItemAction,
+		Label:  label,
+		action: action,
+	}
+}
+
+// NewDisabledContextMenuAction creates a disabled context menu action.
+func NewDisabledContextMenuAction(label string) ContextMenuItem {
+	return ContextMenuItem{
+		Kind:     ContextMenuItemAction,
+		Label:    label,
+		Disabled: true,
+	}
+}
+
+// NewContextMenuSeparator creates a context menu separator.
+func NewContextMenuSeparator() ContextMenuItem {
+	return ContextMenuItem{Kind: ContextMenuItemSeparator}
+}
+
+// SetAction replaces this context menu item's action.
+func (item *ContextMenuItem) SetAction(action Action) {
+	item.action = action
 }
 
 // ContextMenu is a right-click popup menu.
@@ -33,6 +61,7 @@ type ContextMenu struct {
 	itemHeight   float64
 	separatorH   float64
 	minWidth     float64
+	onAction     func(ContextMenuActionEvent)
 }
 
 // NewContextMenu creates a context menu with the given items.
@@ -74,18 +103,23 @@ func (cm *ContextMenu) SetMinWidth(width float64) {
 }
 
 // AddItem adds an action item to the context menu.
-func (cm *ContextMenu) AddItem(label string, onClick func()) *ContextMenu {
+func (cm *ContextMenu) AddItem(label string, action Action) *ContextMenu {
 	cm.Items = append(cm.Items, ContextMenuItem{
-		Kind:    ContextMenuItemAction,
-		Label:   label,
-		OnClick: onClick,
+		Kind:   ContextMenuItemAction,
+		Label:  label,
+		action: action,
 	})
 	return cm
 }
 
+// SetOnAction assigns a callback for all activated context menu actions.
+func (cm *ContextMenu) SetOnAction(onAction func(ContextMenuActionEvent)) {
+	cm.onAction = onAction
+}
+
 // AddSeparator adds a separator to the context menu.
 func (cm *ContextMenu) AddSeparator() *ContextMenu {
-	cm.Items = append(cm.Items, ContextMenuItem{Kind: ContextMenuItemSeparator})
+	cm.Items = append(cm.Items, NewContextMenuSeparator())
 	return cm
 }
 
@@ -198,8 +232,15 @@ func (cm *ContextMenu) Click(actionIndex int) {
 
 	if realIndex < len(cm.Items) {
 		item := cm.Items[realIndex]
-		if item.Kind == ContextMenuItemAction && !item.Disabled && item.OnClick != nil {
-			item.OnClick()
+		if item.Kind == ContextMenuItemAction && !item.Disabled {
+			item.action.Invoke()
+			if cm.onAction != nil {
+				cm.onAction(ContextMenuActionEvent{
+					Menu:  cm,
+					Index: actionIndex,
+					Item:  item,
+				})
+			}
 		}
 	}
 

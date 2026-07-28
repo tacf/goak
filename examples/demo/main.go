@@ -61,30 +61,30 @@ func buildUI(rendererName string) *components.UI {
 	buttonSection.SetPadding(12)
 
 	btn1 := buttonSection.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Click Me!")
-	btn1.OnClick = func() { fmt.Println("Button 1 clicked") }
+	btn1.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("Button 1 clicked") })
 
 	btn2 := buttonSection.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Press Me!")
-	btn2.OnClick = func() { fmt.Println("Button 2 clicked") }
+	btn2.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("Button 2 clicked") })
 
 	checkboxSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(110))
 	checkboxSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
 	checkboxSection.SetAlignment(layout.AlignStart, layout.AlignStart)
 
 	cb1 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature A")
-	cb1.OnChanged = func(checked bool) {
-		fmt.Printf("Feature A: %v\n", checked)
-	}
+	cb1.SetOnChanged(func(event components.CheckboxChangedEvent) {
+		fmt.Printf("Feature A: %v\n", event.Checked)
+	})
 
 	cb2 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature B")
-	cb2.OnChanged = func(checked bool) {
-		fmt.Printf("Feature B: %v\n", checked)
-	}
+	cb2.SetOnChanged(func(event components.CheckboxChangedEvent) {
+		fmt.Printf("Feature B: %v\n", event.Checked)
+	})
 
 	cb3 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature C")
-	cb3.Checked = true
-	cb3.OnChanged = func(checked bool) {
-		fmt.Printf("Feature C: %v\n", checked)
-	}
+	cb3.SetChecked(true)
+	cb3.SetOnChanged(func(event components.CheckboxChangedEvent) {
+		fmt.Printf("Feature C: %v\n", event.Checked)
+	})
 
 	radioSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(120))
 	radioSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
@@ -97,19 +97,19 @@ func buildUI(rendererName string) *components.UI {
 		{Label: "Option 4", Value: "opt4"},
 	}
 	radio := radioSection.CreateRadioGroup(layout.StaticPx(200), layout.StaticPx(110), radioOptions)
-	radio.SelectedIndex = 0
-	radio.OnChanged = func(index int, value string) {
-		fmt.Printf("Radio selected: %s (index %d)\n", value, index)
-	}
+	radio.SetSelectedIndex(0)
+	radio.SetOnChanged(func(event components.RadioChangedEvent) {
+		fmt.Printf("Radio selected: %s (index %d)\n", event.Option.Value, event.Index)
+	})
 
 	sliderSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(80))
 	sliderSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
 	sliderSection.SetAlignment(layout.AlignStart, layout.AlignStart)
 
 	slider := sliderSection.CreateSlider(layout.StaticPx(400), layout.StaticPx(60), "Volume", 0, 100, 50)
-	slider.OnChanged = func(value float64) {
-		fmt.Printf("Slider value: %.1f\n", value)
-	}
+	slider.SetOnChanged(func(event components.SliderChangedEvent) {
+		fmt.Printf("Slider value: %.1f\n", event.Value)
+	})
 
 	dropdownSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(80))
 	dropdownSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
@@ -123,16 +123,16 @@ func buildUI(rendererName string) *components.UI {
 		{Label: "Purple", Value: "purple"},
 	}
 	dropdown := dropdownSection.CreateDropdown(layout.StaticPx(200), layout.StaticPx(32), "Select Color", dropdownOptions)
-	dropdown.OnChanged = func(index int, value string) {
-		fmt.Printf("Dropdown selected: %s (index %d)\n", value, index)
-	}
+	dropdown.SetOnChanged(func(event components.DropdownChangedEvent) {
+		fmt.Printf("Dropdown selected: %s (index %d)\n", event.Option.Value, event.Index)
+	})
 
 	contextMenu := components.NewContextMenu([]components.ContextMenuItem{
-		{Kind: components.ContextMenuItemAction, Label: "Copy", OnClick: func() { fmt.Println("Context: Copy") }},
-		{Kind: components.ContextMenuItemAction, Label: "Paste", OnClick: func() { fmt.Println("Context: Paste") }},
-		{Kind: components.ContextMenuItemSeparator},
-		{Kind: components.ContextMenuItemAction, Label: "Delete", OnClick: func() { fmt.Println("Context: Delete") }},
-		{Kind: components.ContextMenuItemAction, Label: "Properties", OnClick: func() { fmt.Println("Context: Properties") }},
+		components.NewContextMenuAction("Copy", func() { fmt.Println("Context: Copy") }),
+		components.NewContextMenuAction("Paste", func() { fmt.Println("Context: Paste") }),
+		components.NewContextMenuSeparator(),
+		components.NewContextMenuAction("Delete", func() { fmt.Println("Context: Delete") }),
+		components.NewContextMenuAction("Properties", func() { fmt.Println("Context: Properties") }),
 	})
 	container.AddContextMenu(contextMenu)
 
@@ -141,13 +141,13 @@ func buildUI(rendererName string) *components.UI {
 	infoSection.SetAlignment(layout.AlignCenter, layout.AlignCenter)
 
 	infoBtn := infoSection.CreateButton(layout.StaticPx(250), layout.StaticPx(36), "Demo")
-	infoBtn.OnClick = func() {
+	infoBtn.SetOnClick(func(components.ButtonClickEvent) {
 		fmt.Println("This demo shows all available components:")
 		fmt.Println("- Buttons, Checkboxes, Radio Groups")
 		fmt.Println("- Sliders, Dropdowns, Context Menus")
 		fmt.Println("- Menu Bars with submenus")
 		fmt.Println("Try Ctrl+/- to scale the UI!")
-	}
+	})
 
 	statusBar := root.CreatePanel(layout.PercentOf(100), layout.StaticPx(30))
 	statusBar.SetBackground(colors.HexOr("#181818", colors.RGB(24, 24, 24)))

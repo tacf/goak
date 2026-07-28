@@ -23,7 +23,8 @@ go run ./examples/<example>
 ```
 
 Check `examples/demo/main.go` for a widget/features showcase. The basic example
-also generates and installs a window icon entirely in Go code.
+also generates and installs a window icon entirely in Go code. The dispatch
+example shows how to bridge a background channel into UI updates safely.
 
 **Build:** `go build -o bin/basic ./examples/basic`. On Windows, optionally add
 `-ldflags="-H windowsgui"` to build a GUI executable without an accompanying

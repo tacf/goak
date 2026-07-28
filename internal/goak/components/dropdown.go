@@ -16,10 +16,10 @@ type DropdownOption struct {
 // Dropdown is a collapsible list of options.
 type Dropdown struct {
 	c             *layout.Container
-	Label         string
-	Options       []DropdownOption
-	SelectedIndex int
-	OnChanged     func(int, string)
+	label         string
+	options       []DropdownOption
+	selectedIndex int
+	onChanged     func(DropdownChangedEvent)
 	isOpen        bool
 	hoveredIndex  int
 	itemHeight    float64
@@ -29,9 +29,9 @@ type Dropdown struct {
 func NewDropdown(width, height layout.Size, label string, options []DropdownOption) *Dropdown {
 	return &Dropdown{
 		c:             layout.NewContainer(width, height),
-		Label:         label,
-		Options:       options,
-		SelectedIndex: -1,
+		label:         label,
+		options:       append([]DropdownOption(nil), options...),
+		selectedIndex: -1,
 		itemHeight:    24.0,
 		hoveredIndex:  -1,
 	}
@@ -42,6 +42,32 @@ func (dd *Dropdown) Bounds() layout.Rect { return dd.c.Bounds }
 
 // Container returns the layout node for this dropdown (internal use).
 func (dd *Dropdown) Container() *layout.Container { return dd.c }
+
+// Label returns the dropdown placeholder text.
+func (dd *Dropdown) Label() string { return dd.label }
+
+// SetLabel updates the dropdown placeholder text.
+func (dd *Dropdown) SetLabel(label string) { dd.label = label }
+
+// Options returns a copy of the dropdown options.
+func (dd *Dropdown) Options() []DropdownOption {
+	return append([]DropdownOption(nil), dd.options...)
+}
+
+// SetOptions replaces the dropdown options and clears the selection.
+func (dd *Dropdown) SetOptions(options []DropdownOption) {
+	dd.options = append(dd.options[:0], options...)
+	dd.selectedIndex = -1
+	dd.Close()
+}
+
+// SelectedIndex returns the selected option index, or -1.
+func (dd *Dropdown) SelectedIndex() int { return dd.selectedIndex }
+
+// SetOnChanged assigns the dropdown selection callback.
+func (dd *Dropdown) SetOnChanged(onChanged func(DropdownChangedEvent)) {
+	dd.onChanged = onChanged
+}
 
 // IsOpen returns whether the dropdown is currently expanded.
 func (dd *Dropdown) IsOpen() bool { return dd.isOpen }
@@ -75,9 +101,9 @@ func (dd *Dropdown) Draw(renderer *sdl.Renderer, font *rendering.Font, theme Dro
 	rendering.FillRect(renderer, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
 	rendering.DrawStrokeRect(renderer, bound.X, bound.Y, bound.W, bound.H, 1.0, theme.Stroke)
 
-	displayText := dd.Label
-	if dd.SelectedIndex >= 0 && dd.SelectedIndex < len(dd.Options) {
-		displayText = dd.Options[dd.SelectedIndex].Label
+	displayText := dd.label
+	if dd.selectedIndex >= 0 && dd.selectedIndex < len(dd.options) {
+		displayText = dd.options[dd.selectedIndex].Label
 	}
 	textY := textTopY(displayText, font, bound.Y, bound.H)
 	rendering.DrawText(renderer, displayText, font, bound.X+8, textY, theme.Text)
@@ -105,16 +131,16 @@ func (dd *Dropdown) Draw(renderer *sdl.Renderer, font *rendering.Font, theme Dro
 func (dd *Dropdown) drawList(renderer *sdl.Renderer, font *rendering.Font, theme DropdownTheme) {
 	bound := dd.Bounds()
 	listY := bound.Y + bound.H
-	listHeight := float64(len(dd.Options)) * dd.itemHeight
+	listHeight := float64(len(dd.options)) * dd.itemHeight
 
 	rendering.FillRect(renderer, bound.X, listY, bound.W, listHeight, theme.Fill)
 	rendering.DrawStrokeRect(renderer, bound.X, listY, bound.W, listHeight, 1.0, theme.Stroke)
 
-	for i, opt := range dd.Options {
+	for i, opt := range dd.options {
 		itemY := listY + float64(i)*dd.itemHeight
 
 		// Highlight selected or hovered
-		if i == dd.SelectedIndex {
+		if i == dd.selectedIndex {
 			rendering.FillRect(renderer, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Selected)
 		} else if i == dd.hoveredIndex {
 			rendering.FillRect(renderer, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Hover)
@@ -132,7 +158,7 @@ func (dd *Dropdown) ListBounds() layout.Rect {
 	}
 	bound := dd.Bounds()
 	listY := bound.Y + bound.H
-	listHeight := float64(len(dd.Options)) * dd.itemHeight
+	listHeight := float64(len(dd.options)) * dd.itemHeight
 	return layout.Rect{X: bound.X, Y: listY, W: bound.W, H: listHeight}
 }
 
@@ -147,7 +173,7 @@ func (dd *Dropdown) HitTestList(x, y float64) int {
 	}
 	relY := y - listBounds.Y
 	index := int(relY / dd.itemHeight)
-	if index >= 0 && index < len(dd.Options) {
+	if index >= 0 && index < len(dd.options) {
 		return index
 	}
 	return -1
@@ -158,14 +184,24 @@ func (dd *Dropdown) SetHovered(index int) {
 	dd.hoveredIndex = index
 }
 
-// Select selects the option at the given index and calls OnChanged if set.
-func (dd *Dropdown) Select(index int) {
-	if index < 0 || index >= len(dd.Options) {
+// SetSelectedIndex selects an option and emits a change event when necessary.
+func (dd *Dropdown) SetSelectedIndex(index int) {
+	if index < 0 || index >= len(dd.options) {
 		return
 	}
-	dd.SelectedIndex = index
-	if dd.OnChanged != nil {
-		dd.OnChanged(index, dd.Options[index].Value)
+	if dd.selectedIndex == index {
+		dd.Close()
+		return
+	}
+	previous := dd.selectedIndex
+	dd.selectedIndex = index
+	if dd.onChanged != nil {
+		dd.onChanged(DropdownChangedEvent{
+			Dropdown:      dd,
+			PreviousIndex: previous,
+			Index:         index,
+			Option:        dd.options[index],
+		})
 	}
 	dd.Close()
 }

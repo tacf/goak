@@ -54,7 +54,7 @@ func buildUI() *components.UI {
 	content.SetAlignment(layout.AlignCenter, layout.AlignCenter)
 
 	info := content.CreateButton(layout.StaticPx(500), layout.StaticPx(42), "Press Ctrl + / Ctrl - to scale the whole app")
-	info.OnClick = func() { fmt.Println("hint: use keyboard shortcuts") }
+	info.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("hint: use keyboard shortcuts") })
 
 	return ui
 }

@@ -70,7 +70,7 @@ func buildUI() *components.UI {
 	center.SetAlignment(layout.AlignCenter, layout.AlignCenter)
 
 	info := center.CreateButton(layout.StaticPx(320), layout.StaticPx(36), "Use menus above (top and auto-width)")
-	info.OnClick = func() { fmt.Println("info button clicked") }
+	info.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("info button clicked") })
 
 	return ui
 }

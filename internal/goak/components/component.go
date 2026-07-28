@@ -139,7 +139,7 @@ func (p *Panel) CreateButton(width, height layout.Size, label string) *Button {
 	return b
 }
 
-// AddButton adds an existing button (e.g. from NewButton) to this panel. Reuse same style, set OnClick per instance.
+// AddButton adds an existing button (e.g. from NewButton) to this panel.
 func (p *Panel) AddButton(b *Button) {
 	p.c.Children = append(p.c.Children, b.c)
 	p.ui.buttons = append(p.ui.buttons, b)

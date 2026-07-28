@@ -1,8 +1,10 @@
 package goak
 
 import (
+	"context"
 	"errors"
 	"image"
+	"sync"
 
 	"goak/internal/goak/components"
 )
@@ -19,11 +21,24 @@ var ErrRendererAlreadyInitialized = errors.New("goak: renderer must be selected 
 type App struct {
 	win      *Window
 	renderer RendererDriver
+
+	dispatchMu     sync.Mutex
+	dispatchQueue  []dispatchEntry
+	latestDispatch map[string]int
+	ctx            context.Context
+	cancel         context.CancelFunc
+	stopped        bool
 }
 
 // NewApp returns a new App. Call InitWindow before Run.
 func NewApp() *App {
-	return &App{renderer: RendererSoftware}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &App{
+		renderer:       RendererSoftware,
+		latestDispatch: make(map[string]int),
+		ctx:            ctx,
+		cancel:         cancel,
+	}
 }
 
 // SetRenderer selects the SDL renderer used by the next window. It must be
@@ -116,11 +131,14 @@ func (a *App) Run(ui *components.UI) {
 		return
 	}
 	a.win.attachUI(ui)
+	a.win.setBeforeFrame(a.drainDispatch)
 	a.win.Run()
+	a.stopDispatch()
 }
 
 // Destroy closes the window and frees resources.
 func (a *App) Destroy() {
+	a.stopDispatch()
 	if a.win != nil {
 		a.win.Destroy()
 		a.win = nil

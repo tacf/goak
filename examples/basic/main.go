@@ -78,9 +78,9 @@ func buildUI() *components.UI {
 	panel.SetBackground(colors.DarkGray)
 	panel.SetAlignment(layout.AlignCenter, layout.AlignCenter)
 	btn := panel.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Click me")
-	btn.OnClick = func() {
+	btn.SetOnClick(func(components.ButtonClickEvent) {
 		fmt.Println("button clicked")
-	}
+	})
 
 	panel2 := root.CreatePanel(layout.PercentOf(100), layout.AutoSize())
 	panel2.SetBackground(colors.DarkBlue)
@@ -92,7 +92,7 @@ func buildUI() *components.UI {
 		AddSubItem("Preferences", func() { fmt.Println("preferences") })
 
 	okBtn := components.NewButton(layout.StaticPx(100), layout.StaticPx(28), "OK")
-	okBtn.OnClick = func() { fmt.Println("OK clicked") }
+	okBtn.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("OK clicked") })
 	panel2.AddButton(okBtn)
 
 	return ui

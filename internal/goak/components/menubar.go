@@ -27,24 +27,29 @@ const (
 
 // MenuEntry is a submenu row: either a clickable item or a separator.
 type MenuEntry struct {
-	Kind    MenuEntryKind
-	Label   string
-	OnClick func()
+	Kind   MenuEntryKind
+	Label  string
+	action Action
 }
 
 // MenuItem is a top-level menu label and optional submenu.
 type MenuItem struct {
 	Label    string
-	OnClick  func()
+	action   Action
 	SubItems []MenuEntry
 }
 
+// SetAction replaces the top-level menu action.
+func (m *MenuItem) SetAction(action Action) {
+	m.action = action
+}
+
 // AddSubItem appends a clickable submenu item.
-func (m *MenuItem) AddSubItem(label string, onClick func()) *MenuItem {
+func (m *MenuItem) AddSubItem(label string, action Action) *MenuItem {
 	m.SubItems = append(m.SubItems, MenuEntry{
-		Kind:    MenuEntryItem,
-		Label:   label,
-		OnClick: onClick,
+		Kind:   MenuEntryItem,
+		Label:  label,
+		action: action,
 	})
 	return m
 }
@@ -65,6 +70,7 @@ type MenuBar struct {
 	openIndex int
 	hoverTop  int
 	hoverSub  int
+	onAction  func(MenuActionEvent)
 }
 
 // NewMenuBar creates a standalone menu bar (not in the tree).
@@ -89,9 +95,14 @@ func (m *MenuBar) Container() *layout.Container { return m.c }
 func (m *MenuBar) Bounds() layout.Rect { return m.c.Bounds }
 
 // AddItem appends a top-level menu item.
-func (m *MenuBar) AddItem(label string, onClick func()) *MenuItem {
-	m.Items = append(m.Items, MenuItem{Label: label, OnClick: onClick})
+func (m *MenuBar) AddItem(label string, action Action) *MenuItem {
+	m.Items = append(m.Items, MenuItem{Label: label, action: action})
 	return &m.Items[len(m.Items)-1]
+}
+
+// SetOnAction assigns a callback for all activated menu actions.
+func (m *MenuBar) SetOnAction(onAction func(MenuActionEvent)) {
+	m.onAction = onAction
 }
 
 // IsOpen reports whether any submenu is currently open.
@@ -206,9 +217,8 @@ func (m *MenuBar) OnMouseDown(x, y float64) bool {
 	if top >= 0 {
 		item := m.Items[top]
 		if len(item.SubItems) == 0 {
-			if item.OnClick != nil {
-				item.OnClick()
-			}
+			item.action.Invoke()
+			m.emitAction(top, -1, item.Label)
 			m.Close()
 			return true
 		}
@@ -226,9 +236,8 @@ func (m *MenuBar) OnMouseDown(x, y float64) bool {
 		if sub >= 0 {
 			ent := m.Items[m.openIndex].SubItems[sub]
 			if ent.Kind == MenuEntryItem {
-				if ent.OnClick != nil {
-					ent.OnClick()
-				}
+				ent.action.Invoke()
+				m.emitAction(m.openIndex, sub, ent.Label)
 				m.Close()
 				return true
 			}
@@ -237,6 +246,17 @@ func (m *MenuBar) OnMouseDown(x, y float64) bool {
 		m.Close()
 	}
 	return false
+}
+
+func (m *MenuBar) emitAction(topIndex, subIndex int, label string) {
+	if m.onAction != nil {
+		m.onAction(MenuActionEvent{
+			Menu:     m,
+			TopIndex: topIndex,
+			SubIndex: subIndex,
+			Label:    label,
+		})
+	}
 }
 
 func (m *MenuBar) openDropdownWidth(item MenuItem) float64 {

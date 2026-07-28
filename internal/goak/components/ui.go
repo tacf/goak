@@ -68,14 +68,12 @@ func (u *UI) MenuBars() []*MenuBar {
 	return u.menus
 }
 
-// ButtonClicked runs the OnClick callback for the button at index. No-op if index is out of range or OnClick is nil.
+// ButtonClicked activates the button at index.
 func (u *UI) ButtonClicked(index int) {
 	if index < 0 || index >= len(u.buttons) {
 		return
 	}
-	if u.buttons[index].OnClick != nil {
-		u.buttons[index].OnClick()
-	}
+	u.buttons[index].Click()
 }
 
 // Checkboxes returns all checkboxes (for rendering and hit-test).

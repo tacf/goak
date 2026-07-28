@@ -26,7 +26,8 @@ type Window struct {
 	hoveredRect          layout.Rect
 	hasHoveredRect       bool
 
-	ui *components.UI
+	ui          *components.UI
+	beforeFrame func()
 
 	handle       *sdl.Window
 	renderer     *sdl.Renderer
@@ -231,9 +232,16 @@ func (win *Window) Run() {
 		for sdl.PollEvent(&event) {
 			win.handleEvent(&event)
 		}
+		if win.beforeFrame != nil {
+			win.beforeFrame()
+		}
 		win.updateUI()
 		win.drawUI()
 	}
+}
+
+func (win *Window) setBeforeFrame(beforeFrame func()) {
+	win.beforeFrame = beforeFrame
 }
 
 // Destroy releases all native resources. It is safe to call more than once.
@@ -396,7 +404,7 @@ func (win *Window) mouseDown(x, y float64) {
 	}
 	for _, group := range win.ui.RadioGroups() {
 		if index := group.HitTest(x, y); index >= 0 {
-			group.Select(index)
+			group.SetSelectedIndex(index)
 			return
 		}
 	}
@@ -411,7 +419,7 @@ func (win *Window) mouseDown(x, y float64) {
 	for _, dropdown := range win.ui.Dropdowns() {
 		if dropdown.IsOpen() {
 			if index := dropdown.HitTestList(x, y); index >= 0 {
-				dropdown.Select(index)
+				dropdown.SetSelectedIndex(index)
 				return
 			}
 			if !rendering.PointWithinBounds(x, y, dropdown.ListBounds()) {
