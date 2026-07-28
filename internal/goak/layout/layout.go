@@ -13,11 +13,18 @@ func Layout(root *Container, viewW, viewH float64) {
 func pass1Size(c *Container, availW, availH float64) {
 	w := resolveSize(c.Width, availW)
 	h := resolveSize(c.Height, availH)
+	pass1Resolved(c, w, h)
+}
+
+// pass1Resolved lays out a node whose size has already been resolved by its
+// parent. Keeping this separate prevents percentage sizes from being applied
+// a second time during recursion.
+func pass1Resolved(c *Container, w, h float64) {
 	c.Bounds.W = w
 	c.Bounds.H = h
 
-	contentW := w
-	contentH := h
+	_, contentW := insetSize(w, c.Padding)
+	_, contentH := insetSize(h, c.Padding)
 	if len(c.Children) == 0 {
 		return
 	}
@@ -63,7 +70,7 @@ func pass1Size(c *Container, availW, availH float64) {
 		if child.Height.Kind == Auto {
 			ch = childH
 		}
-		pass1Size(child, cw, ch)
+		pass1Resolved(child, cw, ch)
 	}
 }
 
@@ -86,30 +93,43 @@ func pass2Position(c *Container, x, y float64) {
 	c.Bounds.X = x
 	c.Bounds.Y = y
 
+	insetX, contentW := insetSize(c.Bounds.W, c.Padding)
+	insetY, contentH := insetSize(c.Bounds.H, c.Padding)
+	contentX := x + insetX
+	contentY := y + insetY
+
 	var totalChildH float64
 	for _, child := range c.Children {
 		totalChildH += child.Bounds.H
 	}
 
-	cy := y
+	cy := contentY
 	switch c.VerticalAlign {
 	case AlignCenter:
-		cy = y + (c.Bounds.H-totalChildH)/2
+		cy = contentY + (contentH-totalChildH)/2
 	case AlignEnd:
-		cy = y + (c.Bounds.H - totalChildH)
+		cy = contentY + (contentH - totalChildH)
 	}
 
 	for _, child := range c.Children {
-		cx := x
+		cx := contentX
 		switch c.HorizontalAlign {
 		case AlignCenter:
-			cx = x + (c.Bounds.W-child.Bounds.W)/2
+			cx = contentX + (contentW-child.Bounds.W)/2
 		case AlignEnd:
-			cx = x + (c.Bounds.W - child.Bounds.W)
+			cx = contentX + (contentW - child.Bounds.W)
 		}
 		child.Bounds.X = cx
 		child.Bounds.Y = cy
 		pass2Position(child, cx, cy)
 		cy += child.Bounds.H
 	}
+}
+
+func insetSize(size, padding float64) (offset, content float64) {
+	if size <= 0 {
+		return 0, 0
+	}
+	padding = max(0, min(padding, size/2))
+	return padding, size - padding*2
 }

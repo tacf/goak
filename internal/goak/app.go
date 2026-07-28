@@ -1,27 +1,74 @@
 package goak
 
 import (
+	"errors"
+	"image"
+
 	"goak/internal/goak/components"
 )
 
+// ErrWindowNotInitialized is returned by window operations called before
+// InitWindow or InitWindowWithConfig.
+var ErrWindowNotInitialized = errors.New("goak: window is not initialized")
+
+// ErrRendererAlreadyInitialized is returned when changing the renderer after
+// the application window and its renderer have already been created.
+var ErrRendererAlreadyInitialized = errors.New("goak: renderer must be selected before window initialization")
+
 // App is the application API. Create with NewApp, call InitWindow, then Run(ui).
 type App struct {
-	win *Window
+	win      *Window
+	renderer RendererDriver
 }
 
 // NewApp returns a new App. Call InitWindow before Run.
 func NewApp() *App {
-	return &App{}
+	return &App{renderer: RendererSoftware}
+}
+
+// SetRenderer selects the SDL renderer used by the next window. It must be
+// called before InitWindow or InitWindowWithConfig.
+func (a *App) SetRenderer(renderer RendererDriver) error {
+	if a.win != nil {
+		return ErrRendererAlreadyInitialized
+	}
+	a.renderer = normalizeRendererDriver(renderer)
+	return nil
+}
+
+// RendererName returns the active SDL renderer name. Before window
+// initialization it returns the configured renderer.
+func (a *App) RendererName() string {
+	if a.win != nil {
+		return a.win.RendererName()
+	}
+	return string(normalizeRendererDriver(a.renderer))
 }
 
 // InitWindow creates and configures the window with the given title and size.
 // Must be called before Run.
 func (a *App) InitWindow(title string, width, height int) {
-	a.win = InitWindow(title, width, height)
+	if a.win != nil {
+		a.win.Destroy()
+	}
+	a.win = newWindow(Config{
+		Title:       title,
+		Width:       width,
+		Height:      height,
+		WindowScale: 1,
+		Renderer:    a.renderer,
+	})
 }
 
 // InitWindowWithConfig creates and configures the window with explicit options.
 func (a *App) InitWindowWithConfig(cfg Config) {
+	if a.win != nil {
+		a.win.Destroy()
+	}
+	if cfg.Renderer == "" {
+		cfg.Renderer = a.renderer
+	}
+	a.renderer = normalizeRendererDriver(cfg.Renderer)
 	a.win = newWindow(cfg)
 }
 
@@ -54,6 +101,14 @@ func (a *App) SetScaleHotkeysEnabled(enabled bool) {
 	}
 }
 
+// SetWindowIcon sets the native window icon from a standard Go image.
+func (a *App) SetWindowIcon(icon image.Image) error {
+	if a.win == nil {
+		return ErrWindowNotInitialized
+	}
+	return a.win.SetIcon(icon)
+}
+
 // Run runs the execution loop with the given UI; the window event loop blocks
 // until the window is closed.
 func (a *App) Run(ui *components.UI) {
@@ -68,6 +123,7 @@ func (a *App) Run(ui *components.UI) {
 func (a *App) Destroy() {
 	if a.win != nil {
 		a.win.Destroy()
+		a.win = nil
 	}
 }
 

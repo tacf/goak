@@ -5,8 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // ContextMenuItemKind describes a context menu entry kind.
@@ -113,34 +112,34 @@ func DefaultContextMenuTheme() ContextMenuTheme {
 	}
 }
 
-func (cm *ContextMenu) Draw(dst *ebiten.Image, face text.GoTextFace, theme ContextMenuTheme) {
+func (cm *ContextMenu) Draw(renderer *sdl.Renderer, font *rendering.Font, theme ContextMenuTheme) {
 	if !cm.isOpen {
 		return
 	}
 
 	bounds := cm.Bounds()
 
-	rendering.FillRect(dst, bounds.X, bounds.Y, bounds.W, bounds.H, theme.Fill)
-	rendering.DrawStrokeRect(dst, bounds.X, bounds.Y, bounds.W, bounds.H, 1.0, theme.Stroke)
+	rendering.FillRect(renderer, bounds.X, bounds.Y, bounds.W, bounds.H, theme.Fill)
+	rendering.DrawStrokeRect(renderer, bounds.X, bounds.Y, bounds.W, bounds.H, 1.0, theme.Stroke)
 
 	currentY := cm.y
 	actionIndex := 0
 	for _, item := range cm.Items {
 		if item.Kind == ContextMenuItemSeparator {
 			sepY := currentY + cm.separatorH/2
-			rendering.DrawLine(dst, cm.x+6, sepY, bounds.W-12, 1, theme.Separator, true)
+			rendering.DrawLine(renderer, cm.x+6, sepY, bounds.W-12, 1, theme.Separator, true)
 			currentY += cm.separatorH
 		} else {
 			if actionIndex == cm.hoveredIndex && !item.Disabled {
-				rendering.FillRect(dst, cm.x+1, currentY+1, bounds.W-2, cm.itemHeight-2, theme.Hover)
+				rendering.FillRect(renderer, cm.x+1, currentY+1, bounds.W-2, cm.itemHeight-2, theme.Hover)
 			}
 
 			textColor := theme.Text
 			if item.Disabled {
 				textColor = theme.DisabledText
 			}
-			textY := textTopY(item.Label, face, currentY, cm.itemHeight)
-			rendering.DrawText(dst, item.Label, face, int(cm.x+10), textY, textColor)
+			textY := textTopY(item.Label, font, currentY, cm.itemHeight)
+			rendering.DrawText(renderer, item.Label, font, cm.x+10, textY, textColor)
 
 			currentY += cm.itemHeight
 			actionIndex++

@@ -6,8 +6,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // Slider is a horizontal slider control for selecting values in a range.
@@ -74,7 +73,7 @@ func DefaultSliderTheme() SliderTheme {
 	}
 }
 
-func (s *Slider) Draw(dst *ebiten.Image, face text.GoTextFace, theme SliderTheme) {
+func (s *Slider) Draw(renderer *sdl.Renderer, font *rendering.Font, theme SliderTheme) {
 	bound := s.Bounds()
 
 	// Calculate dimensions
@@ -83,8 +82,8 @@ func (s *Slider) Draw(dst *ebiten.Image, face text.GoTextFace, theme SliderTheme
 	thumbRadius := 8.0
 
 	if s.Label != "" {
-		labelHeight = textHeight(s.Label, face)
-		rendering.DrawText(dst, s.Label, face, int(bound.X), int(bound.Y), theme.Text)
+		labelHeight = textHeight(s.Label, font)
+		rendering.DrawText(renderer, s.Label, font, bound.X, bound.Y, theme.Text)
 	}
 
 	// Track position
@@ -94,8 +93,8 @@ func (s *Slider) Draw(dst *ebiten.Image, face text.GoTextFace, theme SliderTheme
 		trackWidth -= 50 // Reserve space for value display
 	}
 
-	rendering.FillRect(dst, bound.X, trackY, trackWidth, trackHeight, theme.TrackFill)
-	rendering.DrawStrokeRect(dst, bound.X, trackY, trackWidth, trackHeight, 1.0, theme.TrackStroke)
+	rendering.FillRect(renderer, bound.X, trackY, trackWidth, trackHeight, theme.TrackFill)
+	rendering.DrawStrokeRect(renderer, bound.X, trackY, trackWidth, trackHeight, 1.0, theme.TrackStroke)
 
 	normalizedValue := (s.Value - s.Min) / (s.Max - s.Min)
 	if normalizedValue < 0 {
@@ -106,19 +105,19 @@ func (s *Slider) Draw(dst *ebiten.Image, face text.GoTextFace, theme SliderTheme
 	}
 	fillWidth := trackWidth * normalizedValue
 	if fillWidth > 0 {
-		rendering.FillRect(dst, bound.X, trackY, fillWidth, trackHeight, theme.FillColor)
+		rendering.FillRect(renderer, bound.X, trackY, fillWidth, trackHeight, theme.FillColor)
 	}
 
 	thumbX := bound.X + fillWidth
 	thumbY := trackY + trackHeight/2
-	rendering.DrawFilledCircle(dst, thumbX, thumbY, thumbRadius, theme.ThumbFill)
-	rendering.DrawCircleStroke(dst, thumbX, thumbY, thumbRadius, 1.5, theme.ThumbStroke)
+	rendering.DrawFilledCircle(renderer, thumbX, thumbY, thumbRadius, theme.ThumbFill)
+	rendering.DrawCircleStroke(renderer, thumbX, thumbY, thumbRadius, 1.5, theme.ThumbStroke)
 
 	if s.showValue {
 		valueStr := fmt.Sprintf("%.1f", s.Value)
 		valueX := int(bound.X + trackWidth + 8)
-		valueY := textTopY(valueStr, face, thumbY-thumbRadius, thumbRadius*2)
-		rendering.DrawText(dst, valueStr, face, valueX, valueY, theme.Text)
+		valueY := textTopY(valueStr, font, thumbY-thumbRadius, thumbRadius*2)
+		rendering.DrawText(renderer, valueStr, font, float64(valueX), valueY, theme.Text)
 	}
 }
 

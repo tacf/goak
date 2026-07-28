@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"log"
+	"math"
 
 	"goak/internal/goak"
 	"goak/internal/goak/colors"
@@ -14,10 +18,42 @@ func main() {
 	defer app.Destroy()
 
 	app.InitWindow("Canvas", 800, 600)
+	if err := app.SetWindowIcon(makeWindowIcon()); err != nil {
+		log.Printf("could not set window icon: %v", err)
+	}
 	app.SetAutoDPI(true)
 	ui := buildUI()
 
 	app.Run(ui)
+}
+
+// makeWindowIcon creates a transparent 64x64 icon with a simple "G" mark.
+func makeWindowIcon() image.Image {
+	const size = 64
+	icon := image.NewRGBA(image.Rect(0, 0, size, size))
+	background := color.RGBA{R: 31, G: 36, B: 48, A: 255}
+	accent := color.RGBA{R: 74, G: 158, B: 255, A: 255}
+
+	for y := range size {
+		for x := range size {
+			// Rounded-square background.
+			cornerX := math.Max(12, math.Min(float64(x), 51))
+			cornerY := math.Max(12, math.Min(float64(y), 51))
+			if math.Hypot(float64(x)-cornerX, float64(y)-cornerY) <= 9 {
+				icon.SetRGBA(x, y, background)
+			}
+
+			// Circular G, opened on the right with a horizontal crossbar.
+			distance := math.Hypot(float64(x)-31.5, float64(y)-31.5)
+			onRing := distance >= 15 && distance <= 23
+			openRight := x >= 39 && y >= 25 && y <= 33
+			crossbar := x >= 31 && x <= 51 && y >= 31 && y <= 37
+			if (onRing && !openRight) || crossbar {
+				icon.SetRGBA(x, y, accent)
+			}
+		}
+	}
+	return icon
 }
 
 func buildUI() *components.UI {

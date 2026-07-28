@@ -7,6 +7,7 @@ type UI struct {
 	root         *layout.Container
 	rootEl       *Root
 	panels       []*Panel
+	labels       []*Label
 	buttons      []*Button
 	menus        []*MenuBar
 	checkboxes   []*Checkbox
@@ -38,6 +39,11 @@ func (u *UI) Root() *Root {
 // Panels returns all panels (for rendering).
 func (u *UI) Panels() []*Panel {
 	return u.panels
+}
+
+// Labels returns all labels for rendering.
+func (u *UI) Labels() []*Label {
+	return u.labels
 }
 
 // Buttons returns all buttons (for rendering and hit-test).

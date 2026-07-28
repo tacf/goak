@@ -5,7 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // Root is the root element. Use ui.Root() to get it, then root.CreatePanel(...) or root.AddPanel(panel) to build the tree.
@@ -25,6 +25,11 @@ func (r *Root) SetAlignment(horizontal, vertical layout.Alignment) {
 	r.c.VerticalAlign = vertical
 }
 
+// SetPadding sets uniform padding between the root bounds and its children.
+func (r *Root) SetPadding(padding float64) {
+	r.c.Padding = max(0, padding)
+}
+
 // CreatePanel creates a new panel and adds it as a direct child of the root. Returns the panel.
 func (r *Root) CreatePanel(width, height layout.Size) *Panel {
 	p := NewPanel(width, height)
@@ -37,6 +42,19 @@ func (r *Root) AddPanel(p *Panel) {
 	p.ui = r.ui
 	r.c.Children = append(r.c.Children, p.c)
 	r.ui.panels = append(r.ui.panels, p)
+}
+
+// CreateLabel creates a label and adds it as a direct child of the root.
+func (r *Root) CreateLabel(width, height layout.Size, text string) *Label {
+	label := NewLabel(width, height, text)
+	r.AddLabel(label)
+	return label
+}
+
+// AddLabel adds an existing label as a direct child of the root.
+func (r *Root) AddLabel(label *Label) {
+	r.c.Children = append(r.c.Children, label.Container())
+	r.ui.labels = append(r.ui.labels, label)
 }
 
 // CreateMenuBar creates a new menu bar and adds it as a direct child of the root.
@@ -74,6 +92,11 @@ func (p *Panel) Container() *layout.Container { return p.c }
 func (p *Panel) SetAlignment(horizontal, vertical layout.Alignment) {
 	p.c.HorizontalAlign = horizontal
 	p.c.VerticalAlign = vertical
+}
+
+// SetPadding sets uniform padding between the panel bounds and its children.
+func (p *Panel) SetPadding(padding float64) {
+	p.c.Padding = max(0, padding)
 }
 
 // SetBackground sets panel background color.
@@ -120,6 +143,19 @@ func (p *Panel) CreateButton(width, height layout.Size, label string) *Button {
 func (p *Panel) AddButton(b *Button) {
 	p.c.Children = append(p.c.Children, b.c)
 	p.ui.buttons = append(p.ui.buttons, b)
+}
+
+// CreateLabel creates a label and adds it to this panel.
+func (p *Panel) CreateLabel(width, height layout.Size, text string) *Label {
+	label := NewLabel(width, height, text)
+	p.AddLabel(label)
+	return label
+}
+
+// AddLabel adds an existing label to this panel.
+func (p *Panel) AddLabel(label *Label) {
+	p.c.Children = append(p.c.Children, label.Container())
+	p.ui.labels = append(p.ui.labels, label)
 }
 
 // CreateMenuBar creates a new menu bar and adds it to this panel.
@@ -207,12 +243,12 @@ func DefaultPanelTheme() PanelTheme {
 	}
 }
 
-func (p *Panel) Draw(dst *ebiten.Image, theme PanelTheme) {
+func (p *Panel) Draw(renderer *sdl.Renderer, theme PanelTheme) {
 	b := p.Bounds()
 	fill := theme.DefaultFill
 	if p.Background != nil {
 		fill = *p.Background
 	}
-	rendering.FillRect(dst, b.X, b.Y, b.W, b.H, fill)
-	rendering.DrawStrokeRect(dst, b.X, b.Y, b.W, b.H, 1.0, theme.Stroke)
+	rendering.FillRect(renderer, b.X, b.Y, b.W, b.H, fill)
+	rendering.DrawStrokeRect(renderer, b.X, b.Y, b.W, b.H, 1.0, theme.Stroke)
 }

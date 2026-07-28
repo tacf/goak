@@ -5,8 +5,8 @@ type Sizing int
 
 const (
 	Static  Sizing = iota // fixed pixels
-	Percent                 // percentage of parent (0–100)
-	Auto                    // fill remaining space
+	Percent               // percentage of parent (0–100)
+	Auto                  // fill remaining space
 )
 
 // Size specifies width or height: Static (px), Percent (0–100), or Auto.
@@ -44,10 +44,12 @@ type Rect struct {
 	X, Y, W, H float64
 }
 
-// Container is a nested layout node. Width and Height define size; Bounds is filled by Layout.
+// Container is a nested layout node. Width and Height define size; Padding
+// insets the area available to children; Bounds is filled by Layout.
 type Container struct {
 	Width           Size
 	Height          Size
+	Padding         float64
 	HorizontalAlign Alignment
 	VerticalAlign   Alignment
 	Children        []*Container

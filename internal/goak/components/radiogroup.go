@@ -5,8 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // RadioOption represents a single option in a radio group.
@@ -67,7 +66,7 @@ func DefaultRadioTheme() RadioTheme {
 	}
 }
 
-func (rg *RadioGroup) Draw(dst *ebiten.Image, face text.GoTextFace, theme RadioTheme) {
+func (rg *RadioGroup) Draw(renderer *sdl.Renderer, font *rendering.Font, theme RadioTheme) {
 	bound := rg.Bounds()
 	circleSize := 14.0
 	circleRadius := circleSize / 2
@@ -78,20 +77,20 @@ func (rg *RadioGroup) Draw(dst *ebiten.Image, face text.GoTextFace, theme RadioT
 		circleCenterX := bound.X + circleRadius
 		circleCenterY := circleY + circleRadius
 
-		rendering.DrawFilledCircle(dst, circleCenterX, circleCenterY, circleRadius, theme.CircleFill)
-		rendering.DrawCircleStroke(dst, circleCenterX, circleCenterY, circleRadius, 1.0, theme.CircleStroke)
+		rendering.DrawFilledCircle(renderer, circleCenterX, circleCenterY, circleRadius, theme.CircleFill)
+		rendering.DrawCircleStroke(renderer, circleCenterX, circleCenterY, circleRadius, 1.0, theme.CircleStroke)
 
 		if i == rg.SelectedIndex {
 			innerRadius := circleRadius - 3.0
-			rendering.DrawFilledCircle(dst, circleCenterX, circleCenterY, innerRadius, theme.SelectedFill)
+			rendering.DrawFilledCircle(renderer, circleCenterX, circleCenterY, innerRadius, theme.SelectedFill)
 		}
 
 		if i == rg.hoveredIndex {
-			rendering.DrawFilledCircle(dst, circleCenterX, circleCenterY, circleRadius, theme.HoverOverlay)
+			rendering.DrawFilledCircle(renderer, circleCenterX, circleCenterY, circleRadius, theme.HoverOverlay)
 		}
 		labelX := int(bound.X + circleSize + 8)
-		labelY := textTopY(opt.Label, face, y, rg.itemHeight)
-		rendering.DrawText(dst, opt.Label, face, labelX, labelY, theme.Text)
+		labelY := textTopY(opt.Label, font, y, rg.itemHeight)
+		rendering.DrawText(renderer, opt.Label, font, float64(labelX), labelY, theme.Text)
 	}
 }
 

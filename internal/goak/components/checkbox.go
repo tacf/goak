@@ -5,8 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // Checkbox is a toggleable control with a label.
@@ -48,26 +47,26 @@ func DefaultCheckboxTheme() CheckboxTheme {
 	}
 }
 
-func (cb *Checkbox) Draw(dst *ebiten.Image, face text.GoTextFace, theme CheckboxTheme, hovered bool) {
+func (cb *Checkbox) Draw(renderer *sdl.Renderer, font *rendering.Font, theme CheckboxTheme, hovered bool) {
 	bound := cb.Bounds()
 	boxSize := 16.0
 	boxY := bound.Y + (bound.H-boxSize)/2
 
-	rendering.FillRect(dst, bound.X, boxY, boxSize, boxSize, theme.BoxFill)
-	rendering.DrawStrokeRect(dst, bound.X, boxY, boxSize, boxSize, 1.0, theme.BoxStroke)
+	rendering.FillRect(renderer, bound.X, boxY, boxSize, boxSize, theme.BoxFill)
+	rendering.DrawStrokeRect(renderer, bound.X, boxY, boxSize, boxSize, 1.0, theme.BoxStroke)
 
 	if cb.Checked {
 		padding := 3.0
-		rendering.FillRect(dst, bound.X+padding, boxY+padding, boxSize-padding*2, boxSize-padding*2, theme.CheckFill)
+		rendering.FillRect(renderer, bound.X+padding, boxY+padding, boxSize-padding*2, boxSize-padding*2, theme.CheckFill)
 	}
 
 	if hovered {
-		rendering.FillRect(dst, bound.X, boxY, boxSize, boxSize, theme.HoverOverlay)
+		rendering.FillRect(renderer, bound.X, boxY, boxSize, boxSize, theme.HoverOverlay)
 	}
 
 	labelX := int(bound.X + boxSize + 8)
-	labelY := textTopY(cb.Label, face, bound.Y, bound.H)
-	rendering.DrawText(dst, cb.Label, face, labelX, labelY, theme.Text)
+	labelY := textTopY(cb.Label, font, bound.Y, bound.H)
+	rendering.DrawText(renderer, cb.Label, font, float64(labelX), labelY, theme.Text)
 }
 
 // Toggle switches the checkbox state and calls OnChanged if set.

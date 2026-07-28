@@ -5,8 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // DropdownOption represents a single option in a dropdown.
@@ -93,59 +92,59 @@ func DefaultDropdownTheme() DropdownTheme {
 	}
 }
 
-func (dd *Dropdown) Draw(dst *ebiten.Image, face text.GoTextFace, theme DropdownTheme) {
+func (dd *Dropdown) Draw(renderer *sdl.Renderer, font *rendering.Font, theme DropdownTheme) {
 	bound := dd.Bounds()
 
-	rendering.FillRect(dst, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
-	rendering.DrawStrokeRect(dst, bound.X, bound.Y, bound.W, bound.H, 1.0, theme.Stroke)
+	rendering.FillRect(renderer, bound.X, bound.Y, bound.W, bound.H, theme.Fill)
+	rendering.DrawStrokeRect(renderer, bound.X, bound.Y, bound.W, bound.H, 1.0, theme.Stroke)
 
 	displayText := dd.Label
 	if dd.SelectedIndex >= 0 && dd.SelectedIndex < len(dd.Options) {
 		displayText = dd.Options[dd.SelectedIndex].Label
 	}
-	textY := textTopY(displayText, face, bound.Y, bound.H)
-	rendering.DrawText(dst, displayText, face, int(bound.X+8), textY, theme.Text)
+	textY := textTopY(displayText, font, bound.Y, bound.H)
+	rendering.DrawText(renderer, displayText, font, bound.X+8, textY, theme.Text)
 
 	arrowSize := 6.0
 	arrowX := bound.X + bound.W - arrowSize - 8
 	arrowY := bound.Y + (bound.H-arrowSize)/2
 	if dd.isOpen {
 		// Up arrow (triangle)
-		rendering.FillRect(dst, arrowX, arrowY+arrowSize, arrowSize, 1, theme.ArrowFill)
-		rendering.FillRect(dst, arrowX+1, arrowY+arrowSize-2, arrowSize-2, 1, theme.ArrowFill)
-		rendering.FillRect(dst, arrowX+2, arrowY+arrowSize-4, arrowSize-4, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX, arrowY+arrowSize, arrowSize, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX+1, arrowY+arrowSize-2, arrowSize-2, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX+2, arrowY+arrowSize-4, arrowSize-4, 1, theme.ArrowFill)
 	} else {
 		// Down arrow (triangle)
-		rendering.FillRect(dst, arrowX, arrowY, arrowSize, 1, theme.ArrowFill)
-		rendering.FillRect(dst, arrowX+1, arrowY+2, arrowSize-2, 1, theme.ArrowFill)
-		rendering.FillRect(dst, arrowX+2, arrowY+4, arrowSize-4, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX, arrowY, arrowSize, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX+1, arrowY+2, arrowSize-2, 1, theme.ArrowFill)
+		rendering.FillRect(renderer, arrowX+2, arrowY+4, arrowSize-4, 1, theme.ArrowFill)
 	}
 
 	if dd.isOpen {
-		dd.drawList(dst, face, theme)
+		dd.drawList(renderer, font, theme)
 	}
 }
 
-func (dd *Dropdown) drawList(dst *ebiten.Image, face text.GoTextFace, theme DropdownTheme) {
+func (dd *Dropdown) drawList(renderer *sdl.Renderer, font *rendering.Font, theme DropdownTheme) {
 	bound := dd.Bounds()
 	listY := bound.Y + bound.H
 	listHeight := float64(len(dd.Options)) * dd.itemHeight
 
-	rendering.FillRect(dst, bound.X, listY, bound.W, listHeight, theme.Fill)
-	rendering.DrawStrokeRect(dst, bound.X, listY, bound.W, listHeight, 1.0, theme.Stroke)
+	rendering.FillRect(renderer, bound.X, listY, bound.W, listHeight, theme.Fill)
+	rendering.DrawStrokeRect(renderer, bound.X, listY, bound.W, listHeight, 1.0, theme.Stroke)
 
 	for i, opt := range dd.Options {
 		itemY := listY + float64(i)*dd.itemHeight
 
 		// Highlight selected or hovered
 		if i == dd.SelectedIndex {
-			rendering.FillRect(dst, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Selected)
+			rendering.FillRect(renderer, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Selected)
 		} else if i == dd.hoveredIndex {
-			rendering.FillRect(dst, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Hover)
+			rendering.FillRect(renderer, bound.X+1, itemY+1, bound.W-2, dd.itemHeight-2, theme.Hover)
 		}
 
-		textY := textTopY(opt.Label, face, itemY, dd.itemHeight)
-		rendering.DrawText(dst, opt.Label, face, int(bound.X+8), textY, theme.Text)
+		textY := textTopY(opt.Label, font, itemY, dd.itemHeight)
+		rendering.DrawText(renderer, opt.Label, font, bound.X+8, textY, theme.Text)
 	}
 }
 

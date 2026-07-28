@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"log"
+	"math"
 
 	"goak/internal/goak"
 	"goak/internal/goak/colors"
@@ -13,15 +17,21 @@ func main() {
 	app := goak.NewApp()
 	defer app.Destroy()
 
+	if err := app.SetRenderer(goak.RendererSoftware); err != nil {
+		log.Fatalf("could not select renderer: %v", err)
+	}
 	app.InitWindow("Goak Demo", 800, 650)
+	if err := app.SetWindowIcon(makeWindowIcon()); err != nil {
+		log.Printf("could not set window icon: %v", err)
+	}
 	app.SetAutoDPI(true)
 	app.SetScaleHotkeysEnabled(true)
-	ui := buildUI()
+	ui := buildUI(app.RendererName())
 
 	app.Run(ui)
 }
 
-func buildUI() *components.UI {
+func buildUI(rendererName string) *components.UI {
 	ui := components.NewUI()
 	root := ui.Root()
 	root.SetAlignment(layout.AlignStart, layout.AlignStart)
@@ -40,13 +50,15 @@ func buildUI() *components.UI {
 		AddSubItem("Paste", func() { fmt.Println("Edit -> Paste") })
 	mainMenu.AddItem("Help", func() { fmt.Println("Help clicked") })
 
-	container := root.CreatePanel(layout.PercentOf(100), layout.PercentOf(100))
+	container := root.CreatePanel(layout.PercentOf(100), layout.AutoSize())
 	container.SetBackground(colors.HexOr("#1e1e1e", colors.RGB(30, 30, 30)))
 	container.SetAlignment(layout.AlignCenter, layout.AlignCenter)
+	container.SetPadding(16)
 
 	buttonSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(100))
 	buttonSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
 	buttonSection.SetAlignment(layout.AlignStart, layout.AlignCenter)
+	buttonSection.SetPadding(12)
 
 	btn1 := buttonSection.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Click Me!")
 	btn1.OnClick = func() { fmt.Println("Button 1 clicked") }
@@ -137,5 +149,47 @@ func buildUI() *components.UI {
 		fmt.Println("Try Ctrl+/- to scale the UI!")
 	}
 
+	statusBar := root.CreatePanel(layout.PercentOf(100), layout.StaticPx(30))
+	statusBar.SetBackground(colors.HexOr("#181818", colors.RGB(24, 24, 24)))
+	statusBar.SetAlignment(layout.AlignEnd, layout.AlignCenter)
+	statusBar.SetPadding(4)
+
+	rendererLabel := statusBar.CreateLabel(
+		layout.StaticPx(220),
+		layout.AutoSize(),
+		"Renderer: "+rendererName,
+	)
+	rendererLabel.SetAlignment(layout.AlignEnd, layout.AlignCenter)
+	rendererLabel.SetColor(colors.HexOr("#a8a8a8", colors.RGB(168, 168, 168)))
+
 	return ui
+}
+
+// makeWindowIcon creates a transparent 64x64 icon with a simple "G" mark.
+func makeWindowIcon() image.Image {
+	const size = 64
+	icon := image.NewRGBA(image.Rect(0, 0, size, size))
+	background := color.RGBA{R: 31, G: 36, B: 48, A: 255}
+	accent := color.RGBA{R: 74, G: 158, B: 255, A: 255}
+
+	for y := range size {
+		for x := range size {
+			// Rounded-square background.
+			cornerX := math.Max(12, math.Min(float64(x), 51))
+			cornerY := math.Max(12, math.Min(float64(y), 51))
+			if math.Hypot(float64(x)-cornerX, float64(y)-cornerY) <= 9 {
+				icon.SetRGBA(x, y, background)
+			}
+
+			// Circular G, opened on the right with a horizontal crossbar.
+			distance := math.Hypot(float64(x)-31.5, float64(y)-31.5)
+			onRing := distance >= 15 && distance <= 23
+			openRight := x >= 39 && y >= 25 && y <= 33
+			crossbar := x >= 31 && x <= 51 && y >= 31 && y <= 37
+			if (onRing && !openRight) || crossbar {
+				icon.SetRGBA(x, y, accent)
+			}
+		}
+	}
+	return icon
 }

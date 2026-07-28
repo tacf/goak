@@ -5,8 +5,7 @@ import (
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/Zyko0/go-sdl3/sdl"
 )
 
 // MenuBarWidthMode controls how the menu bar width is computed.
@@ -282,7 +281,6 @@ func (m *MenuBar) hitSubItem(x, y float64, includeSeparator bool) int {
 	return -1
 }
 
-
 const (
 	menuBarPaddingX        = 8.0
 	menuTopPaddingX        = 8.0
@@ -323,40 +321,41 @@ func DefaultMenuTheme() MenuTheme {
 }
 
 // DrawBar draws the menu strip and top-level items.
-func (m *MenuBar) DrawBar(dst *ebiten.Image, face text.GoTextFace, theme MenuTheme) {
+func (m *MenuBar) DrawBar(renderer *sdl.Renderer, font *rendering.Font, theme MenuTheme) {
 	mb := m.Bounds()
-	rendering.FillRect(dst, mb.X, mb.Y, mb.W, mb.H, theme.Fill)
-	rendering.DrawStrokeRect(dst, mb.X, mb.Y, mb.W, mb.H, 1.0, theme.Stroke)
+	rendering.FillRect(renderer, mb.X, mb.Y, mb.W, mb.H, theme.Fill)
 
 	topRects := m.TopItemRects()
 	for i, r := range topRects {
 		if m.HoverTopIndex() == i {
-			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Hover)
+			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Hover)
 		}
 		if m.OpenIndex() == i {
-			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Active)
+			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Active)
 		}
-		textY := textTopY(m.Items[i].Label, face, r.Y, r.H)
-		rendering.DrawText(dst, m.Items[i].Label, face, int(r.X)+8, textY, theme.Text)
+		textY := textTopY(m.Items[i].Label, font, r.Y, r.H)
+		rendering.DrawText(renderer, m.Items[i].Label, font, r.X+8, textY, theme.Text)
 	}
+
+	// Draw the boundary last so item state fills cannot cover it.
+	rendering.DrawStrokeRect(renderer, mb.X, mb.Y, mb.W, mb.H, 1.0, theme.Stroke)
 }
 
 // DrawDropdown draws the currently open dropdown, if any.
-func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face text.GoTextFace, theme MenuTheme) {
+func (m *MenuBar) DrawDropdown(renderer *sdl.Renderer, font *rendering.Font, theme MenuTheme) {
 	if !m.IsOpen() {
 		return
 	}
-	drop := m.OpenSubMenuBounds()
-	if drop.W > 0 && drop.H > 0 {
-		rendering.FillRect(dst, drop.X, drop.Y, drop.W, drop.H, theme.Fill)
-		rendering.DrawStrokeRect(dst, drop.X, drop.Y, drop.W, drop.H, 1.0, theme.Stroke)
-	}
 
-	subRects := m.OpenSubItemRects()
+	drop := m.OpenSubMenuBounds()
 	open := m.OpenIndex()
-	if open < 0 || open >= len(m.Items) {
+	if drop.W <= 0 || drop.H <= 0 || open < 0 || open >= len(m.Items) {
 		return
 	}
+
+	rendering.FillRect(renderer, drop.X, drop.Y, drop.W, drop.H, theme.Fill)
+
+	subRects := m.OpenSubItemRects()
 	subItems := m.Items[open].SubItems
 	for i, r := range subRects {
 		if i >= len(subItems) {
@@ -365,14 +364,18 @@ func (m *MenuBar) DrawDropdown(dst *ebiten.Image, face text.GoTextFace, theme Me
 		entry := subItems[i]
 		if entry.Kind == MenuEntrySeparator {
 			y := r.Y + r.H/2
-			rendering.FillRect(dst, r.X+6, y, r.W-12, 1, theme.Separator)
+			rendering.FillRect(renderer, r.X+6, y, r.W-12, 1, theme.Separator)
 			continue
 		}
-		if m.HoverSubIndex() == i {
-			rendering.FillRect(dst, r.X, r.Y, r.W, r.H, theme.Hover)
-		}
-		textY := textTopY(entry.Label, face, r.Y, r.H)
-		rendering.DrawText(dst, entry.Label, face, int(r.X)+10, textY, theme.Text)
-	}
-}
 
+		if m.HoverSubIndex() == i {
+			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Hover)
+		}
+
+		textY := textTopY(entry.Label, font, r.Y, r.H)
+		rendering.DrawText(renderer, entry.Label, font, r.X+10, textY, theme.Text)
+	}
+
+	// Keep the dropdown boundary crisp above full-width hover fills.
+	rendering.DrawStrokeRect(renderer, drop.X, drop.Y, drop.W, drop.H, 1.0, theme.Stroke)
+}
