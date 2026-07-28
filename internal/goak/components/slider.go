@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -49,28 +48,6 @@ func (s *Slider) SetStep(step float64) {
 // SetShowValue controls whether the current value is displayed.
 func (s *Slider) SetShowValue(show bool) {
 	s.showValue = show
-}
-
-// SliderTheme controls slider drawing colors.
-type SliderTheme struct {
-	TrackFill   colors.Color
-	TrackStroke colors.Color
-	FillColor   colors.Color
-	ThumbFill   colors.Color
-	ThumbStroke colors.Color
-	Text        colors.Color
-}
-
-// DefaultSliderTheme returns the default slider theme.
-func DefaultSliderTheme() SliderTheme {
-	return SliderTheme{
-		TrackFill:   colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
-		TrackStroke: colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		FillColor:   colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
-		ThumbFill:   colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-		ThumbStroke: colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		Text:        colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-	}
 }
 
 func (s *Slider) Draw(renderer *sdl.Renderer, font *rendering.Font, theme SliderTheme) {

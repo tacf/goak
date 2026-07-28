@@ -43,16 +43,6 @@ func (l *Label) SetAlignment(horizontal, vertical layout.Alignment) {
 	l.VerticalAlign = vertical
 }
 
-// LabelTheme controls label drawing colors.
-type LabelTheme struct {
-	Text colors.Color
-}
-
-// DefaultLabelTheme returns the default label theme.
-func DefaultLabelTheme() LabelTheme {
-	return LabelTheme{Text: colors.HexOr("#eee", colors.RGB(238, 238, 238))}
-}
-
 // Draw renders the label text.
 func (l *Label) Draw(renderer *sdl.Renderer, font *rendering.Font, theme LabelTheme) {
 	if l == nil || font == nil || l.Text == "" {

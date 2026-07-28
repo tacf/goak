@@ -1,7 +1,6 @@
 package components
 
 import (
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -23,22 +22,6 @@ func NewButton(width, height layout.Size, label string) *Button {
 
 // Bounds returns the computed layout rect after Layout.
 func (b *Button) Bounds() layout.Rect { return b.c.Bounds }
-
-// ButtonTheme controls button drawing colors.
-type ButtonTheme struct {
-	Fill   colors.Color
-	Stroke colors.Color
-	Text   colors.Color
-}
-
-// DefaultButtonTheme returns the default button theme.
-func DefaultButtonTheme() ButtonTheme {
-	return ButtonTheme{
-		Fill:   colors.HexOr("#404040", colors.RGB(64, 64, 64)),
-		Stroke: colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		Text:   colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-	}
-}
 
 func (b *Button) Draw(renderer *sdl.Renderer, font *rendering.Font, theme ButtonTheme) {
 	bound := b.Bounds()

@@ -1,7 +1,6 @@
 package components
 
 import (
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -296,28 +295,6 @@ func menuTopItemWidth(label string) float64 {
 
 func menuTextWidth(label string) float64 {
 	return float64(len([]rune(label))) * menuCharWidth
-}
-
-// MenuTheme controls menu bar and dropdown colors.
-type MenuTheme struct {
-	Fill      colors.Color
-	Stroke    colors.Color
-	Hover     colors.Color
-	Active    colors.Color
-	Text      colors.Color
-	Separator colors.Color
-}
-
-// DefaultMenuTheme returns the default menu color theme.
-func DefaultMenuTheme() MenuTheme {
-	return MenuTheme{
-		Fill:      colors.HexOr("#202020", colors.RGB(32, 32, 32)),
-		Stroke:    colors.HexOr("#525252", colors.RGB(82, 82, 82)),
-		Hover:     colors.HexOr("#2f2f2f", colors.RGB(47, 47, 47)),
-		Active:    colors.HexOr("#3a3a3a", colors.RGB(58, 58, 58)),
-		Text:      colors.HexOr("#f0f0f0", colors.RGB(240, 240, 240)),
-		Separator: colors.HexOr("#606060", colors.RGB(96, 96, 96)),
-	}
 }
 
 // DrawBar draws the menu strip and top-level items.

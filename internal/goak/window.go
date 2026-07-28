@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"goak/internal/goak/colors"
 	"goak/internal/goak/components"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
@@ -446,49 +445,40 @@ func (win *Window) drawUI() {
 	scale := win.renderScale()
 	win.ensureFont(scale)
 	_ = win.renderer.SetScale(float32(scale), float32(scale))
-	bg := colors.Black
+	theme := win.ui.Theme()
+	bg := theme.Background
 	_ = win.renderer.SetDrawColor(bg.R, bg.G, bg.B, bg.A)
 	_ = win.renderer.Clear()
 
-	panelTheme := components.DefaultPanelTheme()
-	buttonTheme := components.DefaultButtonTheme()
-	menuTheme := components.DefaultMenuTheme()
-
 	for _, panel := range win.ui.Panels() {
-		panel.Draw(win.renderer, panelTheme)
+		panel.Draw(win.renderer, theme.Panel)
 	}
-	labelTheme := components.DefaultLabelTheme()
 	for _, label := range win.ui.Labels() {
-		label.Draw(win.renderer, win.font, labelTheme)
+		label.Draw(win.renderer, win.font, theme.Label)
 	}
 	for _, button := range win.ui.Buttons() {
-		button.Draw(win.renderer, win.font, buttonTheme)
+		button.Draw(win.renderer, win.font, theme.Button)
 	}
-	checkboxTheme := components.DefaultCheckboxTheme()
 	for _, checkbox := range win.ui.Checkboxes() {
-		checkbox.Draw(win.renderer, win.font, checkboxTheme, false)
+		checkbox.Draw(win.renderer, win.font, theme.Checkbox, false)
 	}
-	radioTheme := components.DefaultRadioTheme()
 	for _, group := range win.ui.RadioGroups() {
-		group.Draw(win.renderer, win.font, radioTheme)
+		group.Draw(win.renderer, win.font, theme.RadioGroup)
 	}
-	sliderTheme := components.DefaultSliderTheme()
 	for _, slider := range win.ui.Sliders() {
-		slider.Draw(win.renderer, win.font, sliderTheme)
+		slider.Draw(win.renderer, win.font, theme.Slider)
 	}
-	dropdownTheme := components.DefaultDropdownTheme()
 	for _, dropdown := range win.ui.Dropdowns() {
-		dropdown.Draw(win.renderer, win.font, dropdownTheme)
+		dropdown.Draw(win.renderer, win.font, theme.Dropdown)
 	}
 	for _, menu := range win.ui.MenuBars() {
-		menu.DrawBar(win.renderer, win.font, menuTheme)
+		menu.DrawBar(win.renderer, win.font, theme.MenuBar)
 	}
 	for _, menu := range win.ui.MenuBars() {
-		menu.DrawDropdown(win.renderer, win.font, menuTheme)
+		menu.DrawDropdown(win.renderer, win.font, theme.MenuBar)
 	}
-	contextTheme := components.DefaultContextMenuTheme()
 	for _, menu := range win.ui.ContextMenus() {
-		menu.Draw(win.renderer, win.font, contextTheme)
+		menu.Draw(win.renderer, win.font, theme.ContextMenu)
 	}
 
 	if win.debugMode {
@@ -497,7 +487,7 @@ func (win *Window) drawUI() {
 				win.renderer,
 				win.hoveredRect.X, win.hoveredRect.Y,
 				win.hoveredRect.W, win.hoveredRect.H,
-				2, colors.Yellow,
+				2, theme.Debug.Outline,
 			)
 		}
 		const label = "Debug Mode"
@@ -508,7 +498,7 @@ func (win *Window) drawUI() {
 		const margin = 8.0
 		x := max(margin, logicalW-labelW-margin)
 		y := max(margin, logicalH-labelH-margin)
-		rendering.DrawText(win.renderer, label, win.font, x, y, colors.Yellow)
+		rendering.DrawText(win.renderer, label, win.font, x, y, theme.Debug.Text)
 	}
 	_ = win.renderer.Present()
 }

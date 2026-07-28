@@ -1,7 +1,6 @@
 package components
 
 import (
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -44,26 +43,6 @@ func (rg *RadioGroup) Container() *layout.Container { return rg.c }
 // SetItemHeight sets the height of each radio option.
 func (rg *RadioGroup) SetItemHeight(height float64) {
 	rg.itemHeight = height
-}
-
-// RadioTheme controls radio group drawing colors.
-type RadioTheme struct {
-	CircleFill   colors.Color
-	CircleStroke colors.Color
-	SelectedFill colors.Color
-	Text         colors.Color
-	HoverOverlay colors.Color
-}
-
-// DefaultRadioTheme returns the default radio theme.
-func DefaultRadioTheme() RadioTheme {
-	return RadioTheme{
-		CircleFill:   colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
-		CircleStroke: colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		SelectedFill: colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
-		Text:         colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-		HoverOverlay: colors.RGBA(255, 255, 255, 20),
-	}
 }
 
 func (rg *RadioGroup) Draw(renderer *sdl.Renderer, font *rendering.Font, theme RadioTheme) {

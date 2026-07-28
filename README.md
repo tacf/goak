@@ -8,6 +8,7 @@ for text, and focuses on rapid prototyping.
 Features:
 - Layout management inspired by Clay.h
 - Handy utilities like named colors (Example, `colors.LightGray`)
+- Themes through a central unified structured (External configuration may come soon)
 - SDL3 rendering with resizable and HiDPI-aware windows
 - Selectable SDL renderers, with software rendering as the default
 - Embedded SDL3, SDL_ttf, and default font assets

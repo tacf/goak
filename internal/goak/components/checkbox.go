@@ -1,7 +1,6 @@
 package components
 
 import (
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -26,26 +25,6 @@ func (cb *Checkbox) Bounds() layout.Rect { return cb.c.Bounds }
 
 // Container returns the layout node for this checkbox (internal use).
 func (cb *Checkbox) Container() *layout.Container { return cb.c }
-
-// CheckboxTheme controls checkbox drawing colors.
-type CheckboxTheme struct {
-	BoxFill      colors.Color
-	BoxStroke    colors.Color
-	CheckFill    colors.Color
-	Text         colors.Color
-	HoverOverlay colors.Color
-}
-
-// DefaultCheckboxTheme returns the default checkbox theme.
-func DefaultCheckboxTheme() CheckboxTheme {
-	return CheckboxTheme{
-		BoxFill:      colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
-		BoxStroke:    colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		CheckFill:    colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
-		Text:         colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-		HoverOverlay: colors.RGBA(255, 255, 255, 20),
-	}
-}
 
 func (cb *Checkbox) Draw(renderer *sdl.Renderer, font *rendering.Font, theme CheckboxTheme, hovered bool) {
 	bound := cb.Bounds()

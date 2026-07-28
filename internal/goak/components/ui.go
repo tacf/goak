@@ -6,6 +6,7 @@ import "goak/internal/goak/layout"
 type UI struct {
 	root         *layout.Container
 	rootEl       *Root
+	theme        Theme
 	panels       []*Panel
 	labels       []*Label
 	buttons      []*Button
@@ -22,6 +23,7 @@ func NewUI() *UI {
 	root := layout.NewContainer(layout.AutoSize(), layout.AutoSize())
 	u := &UI{
 		root:    root,
+		theme:   DefaultTheme(),
 		panels:  nil,
 		buttons: nil,
 		menus:   nil,
@@ -34,6 +36,16 @@ func NewUI() *UI {
 // Root.Scale (default 1) scales the whole UI when changed.
 func (u *UI) Root() *Root {
 	return u.rootEl
+}
+
+// Theme returns the UI's live theme. Its fields can be changed at any time.
+func (u *UI) Theme() *Theme {
+	return &u.theme
+}
+
+// SetTheme replaces all theme values for this UI.
+func (u *UI) SetTheme(theme Theme) {
+	u.theme = theme
 }
 
 // Panels returns all panels (for rendering).

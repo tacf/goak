@@ -1,7 +1,6 @@
 package components
 
 import (
-	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
 
@@ -68,28 +67,6 @@ func (dd *Dropdown) Toggle() {
 // SetItemHeight sets the height of each dropdown option.
 func (dd *Dropdown) SetItemHeight(height float64) {
 	dd.itemHeight = height
-}
-
-// DropdownTheme controls dropdown drawing colors.
-type DropdownTheme struct {
-	Fill      colors.Color
-	Stroke    colors.Color
-	Hover     colors.Color
-	Selected  colors.Color
-	Text      colors.Color
-	ArrowFill colors.Color
-}
-
-// DefaultDropdownTheme returns the default dropdown theme.
-func DefaultDropdownTheme() DropdownTheme {
-	return DropdownTheme{
-		Fill:      colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
-		Stroke:    colors.HexOr("#666", colors.RGB(102, 102, 102)),
-		Hover:     colors.HexOr("#3a3a3a", colors.RGB(58, 58, 58)),
-		Selected:  colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
-		Text:      colors.HexOr("#eee", colors.RGB(238, 238, 238)),
-		ArrowFill: colors.HexOr("#aaa", colors.RGB(170, 170, 170)),
-	}
 }
 
 func (dd *Dropdown) Draw(renderer *sdl.Renderer, font *rendering.Font, theme DropdownTheme) {

@@ -229,20 +229,6 @@ func (p *Panel) AddContextMenu(cm *ContextMenu) {
 	p.ui.contextMenus = append(p.ui.contextMenus, cm)
 }
 
-// PanelTheme controls panel drawing colors.
-type PanelTheme struct {
-	DefaultFill colors.Color
-	Stroke      colors.Color
-}
-
-// DefaultPanelTheme returns the default panel theme.
-func DefaultPanelTheme() PanelTheme {
-	return PanelTheme{
-		DefaultFill: colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
-		Stroke:      colors.HexOr("#555", colors.RGB(85, 85, 85)),
-	}
-}
-
 func (p *Panel) Draw(renderer *sdl.Renderer, theme PanelTheme) {
 	b := p.Bounds()
 	fill := theme.DefaultFill
