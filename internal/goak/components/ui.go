@@ -15,6 +15,9 @@ type UI struct {
 	radioGroups  []*RadioGroup
 	sliders      []*Slider
 	dropdowns    []*Dropdown
+	images       []*Image
+	textInputs   []*TextInput
+	textAreas    []*TextArea
 	contextMenus []*ContextMenu
 }
 
@@ -94,6 +97,21 @@ func (u *UI) Sliders() []*Slider {
 // Dropdowns returns all dropdowns (for rendering and hit-test).
 func (u *UI) Dropdowns() []*Dropdown {
 	return u.dropdowns
+}
+
+// Images returns all image components for rendering.
+func (u *UI) Images() []*Image {
+	return u.images
+}
+
+// TextInputs returns all single-line text inputs.
+func (u *UI) TextInputs() []*TextInput {
+	return u.textInputs
+}
+
+// TextAreas returns all multiline text areas.
+func (u *UI) TextAreas() []*TextArea {
+	return u.textAreas
 }
 
 // ContextMenus returns all context menus (for rendering and hit-test).

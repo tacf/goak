@@ -1,6 +1,8 @@
 package components
 
 import (
+	"image"
+
 	"goak/internal/goak/colors"
 	"goak/internal/goak/layout"
 	"goak/internal/goak/rendering"
@@ -55,6 +57,45 @@ func (r *Root) CreateLabel(width, height layout.Size, text string) *Label {
 func (r *Root) AddLabel(label *Label) {
 	r.c.Children = append(r.c.Children, label.Container())
 	r.ui.labels = append(r.ui.labels, label)
+}
+
+// CreateImage creates an image component and adds it as a direct child.
+func (r *Root) CreateImage(width, height layout.Size, source image.Image) *Image {
+	component := NewImage(width, height, source)
+	r.AddImage(component)
+	return component
+}
+
+// AddImage adds an existing image component as a direct child.
+func (r *Root) AddImage(component *Image) {
+	r.c.Children = append(r.c.Children, component.Container())
+	r.ui.images = append(r.ui.images, component)
+}
+
+// CreateTextInput creates a single-line input and adds it as a direct child.
+func (r *Root) CreateTextInput(width, height layout.Size, text string) *TextInput {
+	input := NewTextInput(width, height, text)
+	r.AddTextInput(input)
+	return input
+}
+
+// AddTextInput adds an existing single-line input as a direct child.
+func (r *Root) AddTextInput(input *TextInput) {
+	r.c.Children = append(r.c.Children, input.Container())
+	r.ui.textInputs = append(r.ui.textInputs, input)
+}
+
+// CreateTextArea creates a multiline text area and adds it as a direct child.
+func (r *Root) CreateTextArea(width, height layout.Size, text string) *TextArea {
+	area := NewTextArea(width, height, text)
+	r.AddTextArea(area)
+	return area
+}
+
+// AddTextArea adds an existing multiline text area as a direct child.
+func (r *Root) AddTextArea(area *TextArea) {
+	r.c.Children = append(r.c.Children, area.Container())
+	r.ui.textAreas = append(r.ui.textAreas, area)
 }
 
 // CreateMenuBar creates a new menu bar and adds it as a direct child of the root.
@@ -156,6 +197,45 @@ func (p *Panel) CreateLabel(width, height layout.Size, text string) *Label {
 func (p *Panel) AddLabel(label *Label) {
 	p.c.Children = append(p.c.Children, label.Container())
 	p.ui.labels = append(p.ui.labels, label)
+}
+
+// CreateImage creates an image component and adds it to this panel.
+func (p *Panel) CreateImage(width, height layout.Size, source image.Image) *Image {
+	component := NewImage(width, height, source)
+	p.AddImage(component)
+	return component
+}
+
+// AddImage adds an existing image component to this panel.
+func (p *Panel) AddImage(component *Image) {
+	p.c.Children = append(p.c.Children, component.Container())
+	p.ui.images = append(p.ui.images, component)
+}
+
+// CreateTextInput creates a single-line input and adds it to this panel.
+func (p *Panel) CreateTextInput(width, height layout.Size, text string) *TextInput {
+	input := NewTextInput(width, height, text)
+	p.AddTextInput(input)
+	return input
+}
+
+// AddTextInput adds an existing single-line input to this panel.
+func (p *Panel) AddTextInput(input *TextInput) {
+	p.c.Children = append(p.c.Children, input.Container())
+	p.ui.textInputs = append(p.ui.textInputs, input)
+}
+
+// CreateTextArea creates a multiline text area and adds it to this panel.
+func (p *Panel) CreateTextArea(width, height layout.Size, text string) *TextArea {
+	area := NewTextArea(width, height, text)
+	p.AddTextArea(area)
+	return area
+}
+
+// AddTextArea adds an existing multiline text area to this panel.
+func (p *Panel) AddTextArea(area *TextArea) {
+	p.c.Children = append(p.c.Children, area.Container())
+	p.ui.textAreas = append(p.ui.textAreas, area)
 }
 
 // CreateMenuBar creates a new menu bar and adds it to this panel.

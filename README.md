@@ -13,6 +13,9 @@ Features:
 - Selectable SDL renderers, with software rendering as the default
 - Embedded SDL3, SDL_ttf, and default font assets
 - Native window icons from any standard Go `image.Image`
+- Image components with contain, cover, stretch, and native-size fitting
+- Unicode text inputs and multiline text areas with wrapping, line numbers,
+  selection, clipboard editing, and horizontal/vertical scrolling
 
 ![Demo app showcasing most widgets and features](images/demo.png)
 
@@ -25,6 +28,8 @@ go run ./examples/<example>
 Check `examples/demo/main.go` for a widget/features showcase. The basic example
 also generates and installs a window icon entirely in Go code. The dispatch
 example shows how to bridge a background channel into UI updates safely.
+The content example demonstrates images, a text input, and a scrollable text
+area; toggle wrapping there to switch between wrapping and horizontal scrolling.
 
 **Build:** `go build -o bin/basic ./examples/basic`. On Windows, optionally add
 `-ldflags="-H windowsgui"` to build a GUI executable without an accompanying
@@ -38,4 +43,23 @@ import (
 	"goak/internal/goak/components"
 	"goak/internal/goak/layout"
 )
+```
+
+```go
+panel.CreateImage(layout.StaticPx(120), layout.StaticPx(80), sourceImage)
+
+name := panel.CreateTextInput(
+	layout.PercentOf(100),
+	layout.StaticPx(36),
+	"",
+)
+name.SetPlaceholder("Name")
+
+notes := panel.CreateTextArea(
+	layout.PercentOf(100),
+	layout.StaticPx(180),
+	"Long editable text...",
+)
+notes.SetWrap(true)
+notes.SetLineNumbers(true)
 ```

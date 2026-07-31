@@ -61,3 +61,23 @@ type ContextMenuActionEvent struct {
 	Index int
 	Item  ContextMenuItem
 }
+
+// TextInputChangedEvent describes a single-line input value change.
+type TextInputChangedEvent struct {
+	TextInput *TextInput
+	Previous  string
+	Text      string
+}
+
+// TextInputSubmittedEvent describes Enter/Return in a single-line input.
+type TextInputSubmittedEvent struct {
+	TextInput *TextInput
+	Text      string
+}
+
+// TextAreaChangedEvent describes a multiline text area value change.
+type TextAreaChangedEvent struct {
+	TextArea *TextArea
+	Previous string
+	Text     string
+}

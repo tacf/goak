@@ -36,6 +36,8 @@ type Window struct {
 	fontScale    float64
 	mouseX       float64
 	mouseY       float64
+	focusedInput *components.TextInput
+	focusedArea  *components.TextArea
 	running      bool
 	destroyed    bool
 
@@ -255,6 +257,11 @@ func (win *Window) Destroy() {
 		win.font.Close()
 		win.font = nil
 	}
+	if win.ui != nil {
+		for _, component := range win.ui.Images() {
+			component.Close()
+		}
+	}
 	if win.renderer != nil {
 		win.renderer.Destroy()
 		win.renderer = nil
@@ -281,7 +288,16 @@ func (win *Window) handleEvent(event *sdl.Event) {
 		win.running = false
 	case sdl.EVENT_KEY_DOWN:
 		key := event.KeyboardEvent()
-		if key == nil || key.Repeat {
+		if key == nil {
+			return
+		}
+		if win.focusedInput != nil && win.focusedInput.HandleKey(key.Key, key.Mod) {
+			return
+		}
+		if win.focusedArea != nil && win.focusedArea.HandleKey(key.Key, key.Mod) {
+			return
+		}
+		if key.Repeat {
 			return
 		}
 		switch key.Key {
@@ -295,6 +311,16 @@ func (win *Window) handleEvent(event *sdl.Event) {
 			if win.scaleHotkeys && key.Mod&sdl.KMOD_CTRL != 0 {
 				win.changeWindowScale(-0.1)
 			}
+		}
+	case sdl.EVENT_TEXT_INPUT:
+		text := event.TextInputEvent()
+		if text == nil {
+			return
+		}
+		if win.focusedInput != nil {
+			win.focusedInput.HandleTextInput(text.Text)
+		} else if win.focusedArea != nil {
+			win.focusedArea.HandleTextInput(text.Text)
 		}
 	case sdl.EVENT_MOUSE_MOTION:
 		mouse := event.MouseMotionEvent()
@@ -328,6 +354,27 @@ func (win *Window) handleEvent(event *sdl.Event) {
 			for _, slider := range win.ui.Sliders() {
 				slider.StopDrag()
 			}
+		}
+	case sdl.EVENT_MOUSE_WHEEL:
+		wheel := event.MouseWheelEvent()
+		if wheel == nil || win.ui == nil {
+			return
+		}
+		win.mouseX = float64(wheel.MouseX)
+		win.mouseY = float64(wheel.MouseY)
+		x, y := win.logicalMousePosition()
+		for index := len(win.ui.TextAreas()) - 1; index >= 0; index-- {
+			area := win.ui.TextAreas()[index]
+			if !rendering.PointWithinBounds(x, y, area.Bounds()) {
+				continue
+			}
+			wheelX := float64(wheel.X)
+			wheelY := float64(wheel.Y)
+			if sdl.GetModState()&sdl.KMOD_SHIFT != 0 && wheelX == 0 {
+				wheelX, wheelY = wheelY, 0
+			}
+			area.ScrollWheel(wheelX, wheelY, win.font)
+			return
 		}
 	}
 }
@@ -390,6 +437,23 @@ func (win *Window) mouseDown(x, y float64) {
 			return
 		}
 	}
+	for index := len(win.ui.TextInputs()) - 1; index >= 0; index-- {
+		input := win.ui.TextInputs()[index]
+		if rendering.PointWithinBounds(x, y, input.Bounds()) {
+			win.focusTextInput(input)
+			input.SetCursorAt(x, win.font)
+			return
+		}
+	}
+	for index := len(win.ui.TextAreas()) - 1; index >= 0; index-- {
+		area := win.ui.TextAreas()[index]
+		if rendering.PointWithinBounds(x, y, area.Bounds()) {
+			win.focusTextArea(area)
+			area.SetCursorAt(x, y, win.font)
+			return
+		}
+	}
+	win.clearTextFocus()
 	for i, button := range win.ui.Buttons() {
 		if rendering.PointWithinBounds(x, y, button.Bounds()) {
 			win.ui.ButtonClicked(i)
@@ -461,6 +525,9 @@ func (win *Window) drawUI() {
 	for _, panel := range win.ui.Panels() {
 		panel.Draw(win.renderer, theme.Panel)
 	}
+	for _, component := range win.ui.Images() {
+		component.Draw(win.renderer)
+	}
 	for _, label := range win.ui.Labels() {
 		label.Draw(win.renderer, win.font, theme.Label)
 	}
@@ -478,6 +545,12 @@ func (win *Window) drawUI() {
 	}
 	for _, dropdown := range win.ui.Dropdowns() {
 		dropdown.Draw(win.renderer, win.font, theme.Dropdown)
+	}
+	for _, input := range win.ui.TextInputs() {
+		input.Draw(win.renderer, win.font, theme.TextInput)
+	}
+	for _, area := range win.ui.TextAreas() {
+		area.Draw(win.renderer, win.font, theme.TextArea)
 	}
 	for _, menu := range win.ui.MenuBars() {
 		menu.DrawBar(win.renderer, win.font, theme.MenuBar)
@@ -582,6 +655,45 @@ func normalizeScale(value float64) float64 {
 	return value
 }
 
+func (win *Window) focusTextInput(input *components.TextInput) {
+	if win.focusedInput == input {
+		return
+	}
+	win.clearTextFocus()
+	win.focusedInput = input
+	input.SetFocused(true)
+	if win.handle != nil {
+		_ = win.handle.StartTextInput()
+	}
+}
+
+func (win *Window) focusTextArea(area *components.TextArea) {
+	if win.focusedArea == area {
+		return
+	}
+	win.clearTextFocus()
+	win.focusedArea = area
+	area.SetFocused(true)
+	if win.handle != nil {
+		_ = win.handle.StartTextInput()
+	}
+}
+
+func (win *Window) clearTextFocus() {
+	hadFocus := win.focusedInput != nil || win.focusedArea != nil
+	if win.focusedInput != nil {
+		win.focusedInput.SetFocused(false)
+		win.focusedInput = nil
+	}
+	if win.focusedArea != nil {
+		win.focusedArea.SetFocused(false)
+		win.focusedArea = nil
+	}
+	if hadFocus && win.handle != nil {
+		_ = win.handle.StopTextInput()
+	}
+}
+
 func (win *Window) updateHoveredElement(x, y float64) {
 	win.hasHoveredRect = false
 	if !win.debugMode || win.ui == nil {
@@ -622,6 +734,30 @@ func (win *Window) updateHoveredElement(x, y float64) {
 	for i := len(buttons) - 1; i >= 0; i-- {
 		if rendering.PointWithinBounds(x, y, buttons[i].Bounds()) {
 			win.hoveredRect = buttons[i].Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+	textAreas := win.ui.TextAreas()
+	for i := len(textAreas) - 1; i >= 0; i-- {
+		if rendering.PointWithinBounds(x, y, textAreas[i].Bounds()) {
+			win.hoveredRect = textAreas[i].Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+	textInputs := win.ui.TextInputs()
+	for i := len(textInputs) - 1; i >= 0; i-- {
+		if rendering.PointWithinBounds(x, y, textInputs[i].Bounds()) {
+			win.hoveredRect = textInputs[i].Bounds()
+			win.hasHoveredRect = true
+			return
+		}
+	}
+	images := win.ui.Images()
+	for i := len(images) - 1; i >= 0; i-- {
+		if rendering.PointWithinBounds(x, y, images[i].Bounds()) {
+			win.hoveredRect = images[i].Bounds()
 			win.hasHoveredRect = true
 			return
 		}

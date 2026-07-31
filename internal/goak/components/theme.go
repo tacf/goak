@@ -13,6 +13,8 @@ type Theme struct {
 	RadioGroup  RadioTheme
 	Slider      SliderTheme
 	Dropdown    DropdownTheme
+	TextInput   TextInputTheme
+	TextArea    TextAreaTheme
 	MenuBar     MenuTheme
 	ContextMenu ContextMenuTheme
 }
@@ -77,6 +79,32 @@ type DropdownTheme struct {
 	Selected  colors.Color
 	Text      colors.Color
 	ArrowFill colors.Color
+}
+
+// TextInputTheme controls single-line text input drawing colors.
+type TextInputTheme struct {
+	Fill          colors.Color
+	Stroke        colors.Color
+	FocusedStroke colors.Color
+	Text          colors.Color
+	Placeholder   colors.Color
+	Selection     colors.Color
+	Caret         colors.Color
+}
+
+// TextAreaTheme controls multiline text area drawing colors.
+type TextAreaTheme struct {
+	Fill           colors.Color
+	Stroke         colors.Color
+	FocusedStroke  colors.Color
+	Text           colors.Color
+	Placeholder    colors.Color
+	Selection      colors.Color
+	Caret          colors.Color
+	GutterFill     colors.Color
+	LineNumber     colors.Color
+	ScrollbarTrack colors.Color
+	ScrollbarThumb colors.Color
 }
 
 // MenuTheme controls menu bar and dropdown colors.
@@ -148,6 +176,28 @@ func DefaultTheme() Theme {
 			Selected:  colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
 			Text:      colors.HexOr("#eee", colors.RGB(238, 238, 238)),
 			ArrowFill: colors.HexOr("#aaa", colors.RGB(170, 170, 170)),
+		},
+		TextInput: TextInputTheme{
+			Fill:          colors.HexOr("#252525", colors.RGB(37, 37, 37)),
+			Stroke:        colors.HexOr("#666", colors.RGB(102, 102, 102)),
+			FocusedStroke: colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
+			Text:          colors.HexOr("#eee", colors.RGB(238, 238, 238)),
+			Placeholder:   colors.HexOr("#888", colors.RGB(136, 136, 136)),
+			Selection:     colors.RGBA(74, 158, 255, 110),
+			Caret:         colors.White,
+		},
+		TextArea: TextAreaTheme{
+			Fill:           colors.HexOr("#202020", colors.RGB(32, 32, 32)),
+			Stroke:         colors.HexOr("#666", colors.RGB(102, 102, 102)),
+			FocusedStroke:  colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
+			Text:           colors.HexOr("#eee", colors.RGB(238, 238, 238)),
+			Placeholder:    colors.HexOr("#888", colors.RGB(136, 136, 136)),
+			Selection:      colors.RGBA(74, 158, 255, 110),
+			Caret:          colors.White,
+			GutterFill:     colors.HexOr("#191919", colors.RGB(25, 25, 25)),
+			LineNumber:     colors.HexOr("#888", colors.RGB(136, 136, 136)),
+			ScrollbarTrack: colors.HexOr("#181818", colors.RGB(24, 24, 24)),
+			ScrollbarThumb: colors.HexOr("#666", colors.RGB(102, 102, 102)),
 		},
 		MenuBar: MenuTheme{
 			Fill:      colors.HexOr("#202020", colors.RGB(32, 32, 32)),
