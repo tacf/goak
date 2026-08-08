@@ -3,9 +3,10 @@ package goak_test
 import (
 	"testing"
 
-	"goak"
-	"goak/components"
-	"goak/layout"
+	"github.com/tacf/goak"
+
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
 )
 
 type testScene struct{}

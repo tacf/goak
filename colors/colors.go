@@ -1,7 +1,7 @@
 // Package colors exposes Goak's color type, constructors, and named palette.
 package colors
 
-import internal "goak/internal/goak/colors"
+import internal "github.com/tacf/goak/internal/goak/colors"
 
 type Color = internal.Color
 

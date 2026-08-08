@@ -3,8 +3,8 @@ package rendering
 import (
 	"math"
 
-	"goak/internal/goak/colors"
-	"goak/internal/goak/layout"
+	"github.com/tacf/goak/internal/goak/colors"
+	"github.com/tacf/goak/internal/goak/layout"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )

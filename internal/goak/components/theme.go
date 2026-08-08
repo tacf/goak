@@ -1,6 +1,6 @@
 package components
 
-import "goak/internal/goak/colors"
+import "github.com/tacf/goak/internal/goak/colors"
 
 // Theme contains all colors used to render a UI.
 type Theme struct {

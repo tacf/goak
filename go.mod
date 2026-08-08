@@ -1,4 +1,4 @@
-module goak
+module github.com/tacf/goak
 
 go 1.25.0
 

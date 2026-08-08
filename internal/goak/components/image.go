@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"goak/internal/goak/layout"
+	"github.com/tacf/goak/internal/goak/layout"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )

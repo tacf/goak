@@ -2,7 +2,7 @@
 // low-level scene host for custom interfaces.
 package goak
 
-import core "goak/internal/goak"
+import core "github.com/tacf/goak/internal/goak"
 
 type (
 	App               = core.App

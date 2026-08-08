@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"unicode"
 
-	"goak/internal/goak/layout"
-	"goak/internal/goak/rendering"
+	"github.com/tacf/goak/internal/goak/layout"
+	"github.com/tacf/goak/internal/goak/rendering"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )

@@ -3,9 +3,9 @@ package components
 import (
 	"image"
 
-	"goak/internal/goak/colors"
-	"goak/internal/goak/layout"
-	"goak/internal/goak/rendering"
+	"github.com/tacf/goak/internal/goak/colors"
+	"github.com/tacf/goak/internal/goak/layout"
+	"github.com/tacf/goak/internal/goak/rendering"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )

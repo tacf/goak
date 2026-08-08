@@ -3,7 +3,7 @@ package components
 import (
 	"testing"
 
-	"goak/internal/goak/layout"
+	"github.com/tacf/goak/internal/goak/layout"
 )
 
 func TestButtonRunsActionAndTypedCallback(t *testing.T) {

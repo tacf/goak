@@ -1,6 +1,6 @@
 package main
 
-import "goak/examples/weather/internal/weatherapp"
+import "github.com/tacf/goak/examples/weather/internal/weatherapp"
 
 func main() {
 	weatherapp.Run()

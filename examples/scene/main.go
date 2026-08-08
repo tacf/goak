@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"goak"
+	"github.com/tacf/goak"
 )
 
 type scene struct{}

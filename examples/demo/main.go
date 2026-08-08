@@ -7,10 +7,11 @@ import (
 	"log"
 	"math"
 
-	"goak"
-	"goak/colors"
-	"goak/components"
-	"goak/layout"
+	"github.com/tacf/goak"
+
+	"github.com/tacf/goak/colors"
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
 )
 
 func main() {

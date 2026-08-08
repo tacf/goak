@@ -3,7 +3,7 @@
 // module to build and compose widget trees.
 package components
 
-import internal "goak/internal/goak/components"
+import internal "github.com/tacf/goak/internal/goak/components"
 
 type (
 	Action                  = internal.Action

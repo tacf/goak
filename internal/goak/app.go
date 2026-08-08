@@ -6,7 +6,7 @@ import (
 	"image"
 	"sync"
 
-	"goak/internal/goak/components"
+	"github.com/tacf/goak/internal/goak/components"
 )
 
 // ErrWindowNotInitialized is returned by window operations called before

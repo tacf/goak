@@ -1,7 +1,7 @@
 // Package layout exposes Goak's two-pass layout primitives.
 package layout
 
-import internal "goak/internal/goak/layout"
+import internal "github.com/tacf/goak/internal/goak/layout"
 
 type (
 	Alignment = internal.Alignment

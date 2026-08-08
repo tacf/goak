@@ -1,6 +1,6 @@
 package components
 
-import "goak/internal/goak/rendering"
+import "github.com/tacf/goak/internal/goak/rendering"
 
 func textTopY(label string, font *rendering.Font, rowY, rowH float64) float64 {
 	_, height := font.Measure(label)
