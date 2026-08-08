@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tacf/goak/internal/goak"
-	"github.com/tacf/goak/internal/goak/colors"
-	"github.com/tacf/goak/internal/goak/components"
-	"github.com/tacf/goak/internal/goak/layout"
+	"github.com/tacf/goak"
+	"github.com/tacf/goak/colors"
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
 )
 
 const forecastDays = 7

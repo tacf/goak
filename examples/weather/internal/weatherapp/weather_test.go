@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tacf/goak/internal/goak"
-	"github.com/tacf/goak/internal/goak/layout"
+	"github.com/tacf/goak"
+	"github.com/tacf/goak/layout"
 )
 
 func TestSearchLocationsBuildsQueryAndDecodesResults(t *testing.T) {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/tacf/goak/internal/goak/components"
-	"github.com/tacf/goak/internal/goak/layout"
-	"github.com/tacf/goak/internal/goak/rendering"
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
+	"github.com/tacf/goak/rendering"
 
 	"github.com/Zyko0/go-sdl3/bin/binsdl"
 	"github.com/Zyko0/go-sdl3/bin/binttf"

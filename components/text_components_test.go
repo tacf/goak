@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/tacf/goak/internal/goak/layout"
+	"github.com/tacf/goak/layout"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )

@@ -1,6 +1,6 @@
 package components
 
-import "github.com/tacf/goak/internal/goak/layout"
+import "github.com/tacf/goak/layout"
 
 // UI holds the root and all panels/buttons for layout and drawing.
 type UI struct {

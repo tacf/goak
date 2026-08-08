@@ -1,9 +1,9 @@
 package components
 
 import (
-	"github.com/tacf/goak/internal/goak/colors"
-	"github.com/tacf/goak/internal/goak/layout"
-	"github.com/tacf/goak/internal/goak/rendering"
+	"github.com/tacf/goak/colors"
+	"github.com/tacf/goak/layout"
+	"github.com/tacf/goak/rendering"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 )
