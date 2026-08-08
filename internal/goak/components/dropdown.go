@@ -108,19 +108,28 @@ func (dd *Dropdown) Draw(renderer *sdl.Renderer, font *rendering.Font, theme Dro
 	textY := textTopY(displayText, font, bound.Y, bound.H)
 	rendering.DrawText(renderer, displayText, font, bound.X+8, textY, theme.Text)
 
-	arrowSize := 6.0
-	arrowX := bound.X + bound.W - arrowSize - 8
-	arrowY := bound.Y + (bound.H-arrowSize)/2
+	arrowWidth := min(12.0, max(6.0, bound.H*0.28))
+	arrowHeight := arrowWidth * 0.55
+	arrowCenterX := bound.X + bound.W - 8 - arrowWidth/2
+	arrowCenterY := bound.Y + bound.H/2
+	leftX := arrowCenterX - arrowWidth/2
+	rightX := arrowCenterX + arrowWidth/2
+	topY := arrowCenterY - arrowHeight/2
+	bottomY := arrowCenterY + arrowHeight/2
 	if dd.isOpen {
-		// Up arrow (triangle)
-		rendering.FillRect(renderer, arrowX, arrowY+arrowSize, arrowSize, 1, theme.ArrowFill)
-		rendering.FillRect(renderer, arrowX+1, arrowY+arrowSize-2, arrowSize-2, 1, theme.ArrowFill)
-		rendering.FillRect(renderer, arrowX+2, arrowY+arrowSize-4, arrowSize-4, 1, theme.ArrowFill)
+		rendering.FillTriangle(renderer,
+			leftX, bottomY,
+			rightX, bottomY,
+			arrowCenterX, topY,
+			theme.ArrowFill,
+		)
 	} else {
-		// Down arrow (triangle)
-		rendering.FillRect(renderer, arrowX, arrowY, arrowSize, 1, theme.ArrowFill)
-		rendering.FillRect(renderer, arrowX+1, arrowY+2, arrowSize-2, 1, theme.ArrowFill)
-		rendering.FillRect(renderer, arrowX+2, arrowY+4, arrowSize-4, 1, theme.ArrowFill)
+		rendering.FillTriangle(renderer,
+			leftX, topY,
+			rightX, topY,
+			arrowCenterX, bottomY,
+			theme.ArrowFill,
+		)
 	}
 
 	if dd.isOpen {

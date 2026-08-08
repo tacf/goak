@@ -44,6 +44,20 @@ func DrawLine(renderer *sdl.Renderer, x, y, length, thickness float64, c colors.
 	FillRect(renderer, x, y, thickness, length, c)
 }
 
+// FillTriangle draws a filled triangle from three points.
+func FillTriangle(renderer *sdl.Renderer, x1, y1, x2, y2, x3, y3 float64, c colors.Color) {
+	if renderer == nil {
+		return
+	}
+	color := floatColor(c, 1)
+	vertices := []sdl.Vertex{
+		{Position: sdl.FPoint{X: float32(x1), Y: float32(y1)}, Color: color},
+		{Position: sdl.FPoint{X: float32(x2), Y: float32(y2)}, Color: color},
+		{Position: sdl.FPoint{X: float32(x3), Y: float32(y3)}, Color: color},
+	}
+	_ = renderer.RenderGeometry(nil, vertices, nil)
+}
+
 // DrawCircleStroke draws an antialiased circle outline.
 func DrawCircleStroke(renderer *sdl.Renderer, centerX, centerY, radius, thickness float64, c colors.Color) {
 	if renderer == nil || radius <= 0 || thickness <= 0 {

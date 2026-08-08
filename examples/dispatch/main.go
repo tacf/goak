@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"goak/internal/goak"
-	"goak/internal/goak/colors"
-	"goak/internal/goak/components"
-	"goak/internal/goak/layout"
+	"goak"
+	"goak/colors"
+	"goak/components"
+	"goak/layout"
 )
 
 func main() {

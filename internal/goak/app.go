@@ -63,10 +63,7 @@ func (a *App) RendererName() string {
 // InitWindow creates and configures the window with the given title and size.
 // Must be called before Run.
 func (a *App) InitWindow(title string, width, height int) {
-	if a.win != nil {
-		a.win.Destroy()
-	}
-	a.win = newWindow(Config{
+	a.InitWindowWithConfig(Config{
 		Title:       title,
 		Width:       width,
 		Height:      height,
@@ -77,14 +74,29 @@ func (a *App) InitWindow(title string, width, height int) {
 
 // InitWindowWithConfig creates and configures the window with explicit options.
 func (a *App) InitWindowWithConfig(cfg Config) {
+	if err := a.TryInitWindowWithConfig(cfg); err != nil {
+		panic(err)
+	}
+}
+
+// TryInitWindowWithConfig is the error-returning form of InitWindowWithConfig.
+// It is intended for applications that surface startup failures to users
+// instead of treating them as programmer errors.
+func (a *App) TryInitWindowWithConfig(cfg Config) error {
 	if a.win != nil {
 		a.win.Destroy()
+		a.win = nil
 	}
 	if cfg.Renderer == "" {
 		cfg.Renderer = a.renderer
 	}
 	a.renderer = normalizeRendererDriver(cfg.Renderer)
-	a.win = newWindow(cfg)
+	win, err := createWindow(cfg)
+	if err != nil {
+		return err
+	}
+	a.win = win
+	return nil
 }
 
 // SetAutoDPI toggles automatic HiDPI scaling on the app window.
@@ -134,6 +146,37 @@ func (a *App) Run(ui *components.UI) {
 	a.win.setBeforeFrame(a.drainDispatch)
 	a.win.Run()
 	a.stopDispatch()
+}
+
+// RunScene runs a custom interface through the same SDL lifecycle as retained
+// widget UIs. A scene can use the normalized event API and only drop down to
+// the SDL renderer for application-specific drawing.
+func (a *App) RunScene(scene Scene) error {
+	if a.win == nil {
+		return ErrWindowNotInitialized
+	}
+	if scene == nil {
+		return ErrNilScene
+	}
+	ctx := &SceneContext{window: a.win}
+	if initializer, ok := scene.(SceneInitializer); ok {
+		if err := initializer.Init(ctx); err != nil {
+			if closer, exists := scene.(SceneCloser); exists {
+				closer.Close()
+			}
+			ctx.close()
+			return err
+		}
+	}
+	a.win.attachScene(scene, ctx)
+	a.win.setBeforeFrame(a.drainDispatch)
+	a.win.Run()
+	if closer, ok := scene.(SceneCloser); ok {
+		closer.Close()
+	}
+	ctx.close()
+	a.stopDispatch()
+	return nil
 }
 
 // Destroy closes the window and frees resources.

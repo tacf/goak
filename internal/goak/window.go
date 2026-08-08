@@ -27,6 +27,8 @@ type Window struct {
 	hasHoveredRect       bool
 
 	ui          *components.UI
+	scene       Scene
+	sceneCtx    *SceneContext
 	beforeFrame func()
 
 	handle       *sdl.Window
@@ -47,12 +49,13 @@ type Window struct {
 
 // Config contains window creation options.
 type Config struct {
-	Title       string
-	Width       int
-	Height      int
-	AutoDPI     bool
-	WindowScale float64
-	Renderer    RendererDriver
+	Title           string
+	Width           int
+	Height          int
+	AutoDPI         bool
+	WindowScale     float64
+	Renderer        RendererDriver
+	SkipDefaultFont bool // custom scenes may provide their own font system
 }
 
 // InitWindow creates a resizable SDL3 window.
@@ -67,6 +70,14 @@ func InitWindow(title string, width, height int) *Window {
 }
 
 func newWindow(cfg Config) *Window {
+	win, err := createWindow(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return win
+}
+
+func createWindow(cfg Config) (*Window, error) {
 	if cfg.Width <= 0 {
 		cfg.Width = 800
 	}
@@ -88,12 +99,12 @@ func newWindow(cfg Config) *Window {
 	}
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
 		cleanupLibraries()
-		panic(fmt.Errorf("goak: SDL init failed: %w", err))
+		return nil, fmt.Errorf("goak: SDL init failed: %w", err)
 	}
 	if err := ttf.Init(); err != nil {
 		sdl.Quit()
 		cleanupLibraries()
-		panic(fmt.Errorf("goak: SDL_ttf init failed: %w", err))
+		return nil, fmt.Errorf("goak: SDL_ttf init failed: %w", err)
 	}
 
 	flags := sdl.WINDOW_RESIZABLE | sdl.WINDOW_HIGH_PIXEL_DENSITY
@@ -102,17 +113,21 @@ func newWindow(cfg Config) *Window {
 		ttf.Quit()
 		sdl.Quit()
 		cleanupLibraries()
-		panic(fmt.Errorf("goak: could not create SDL window: %w", err))
+		return nil, fmt.Errorf("goak: could not create SDL window: %w", err)
 	}
 
 	rendererDriver := normalizeRendererDriver(cfg.Renderer)
-	renderer, err := handle.CreateRenderer(string(rendererDriver))
+	rendererNameHint := string(rendererDriver)
+	if rendererDriver == RendererAuto {
+		rendererNameHint = ""
+	}
+	renderer, err := handle.CreateRenderer(rendererNameHint)
 	if err != nil {
 		handle.Destroy()
 		ttf.Quit()
 		sdl.Quit()
 		cleanupLibraries()
-		panic(fmt.Errorf("goak: could not create SDL renderer %q: %w", rendererDriver, err))
+		return nil, fmt.Errorf("goak: could not create SDL renderer %q: %w", rendererDriver, err)
 	}
 	_ = renderer.SetVSync(1)
 	_ = renderer.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
@@ -128,14 +143,17 @@ func newWindow(cfg Config) *Window {
 			fontScale *= float64(density)
 		}
 	}
-	font, err := rendering.NewFont(renderer, 20, float32(fontScale))
-	if err != nil {
-		renderer.Destroy()
-		handle.Destroy()
-		ttf.Quit()
-		sdl.Quit()
-		cleanupLibraries()
-		panic(fmt.Errorf("goak: could not open default font: %w", err))
+	var font *rendering.Font
+	if !cfg.SkipDefaultFont {
+		font, err = rendering.NewFont(renderer, 20, float32(fontScale))
+		if err != nil {
+			renderer.Destroy()
+			handle.Destroy()
+			ttf.Quit()
+			sdl.Quit()
+			cleanupLibraries()
+			return nil, fmt.Errorf("goak: could not open default font: %w", err)
+		}
 	}
 
 	return &Window{
@@ -151,7 +169,7 @@ func newWindow(cfg Config) *Window {
 		fontScale:    fontScale,
 		unloadSDL:    unloadSDL,
 		unloadTTF:    unloadTTF,
-	}
+	}, nil
 }
 
 // RendererName returns the SDL renderer backing this window.
@@ -164,6 +182,14 @@ func (win *Window) RendererName() string {
 
 func (win *Window) attachUI(ui *components.UI) {
 	win.ui = ui
+	win.scene = nil
+	win.sceneCtx = nil
+}
+
+func (win *Window) attachScene(scene Scene, ctx *SceneContext) {
+	win.scene = scene
+	win.sceneCtx = ctx
+	win.ui = nil
 }
 
 // SetTitle updates the native window title.
@@ -237,8 +263,16 @@ func (win *Window) Run() {
 		if win.beforeFrame != nil {
 			win.beforeFrame()
 		}
-		win.updateUI()
-		win.drawUI()
+		if win.scene != nil {
+			if updater, ok := win.scene.(SceneUpdater); ok {
+				updater.Update()
+			}
+			win.scene.Draw(win.sceneCtx)
+			_ = win.renderer.Present()
+		} else {
+			win.updateUI()
+			win.drawUI()
+		}
 	}
 }
 
@@ -283,6 +317,18 @@ func (win *Window) Destroy() {
 }
 
 func (win *Window) handleEvent(event *sdl.Event) {
+	if win.scene != nil {
+		if translated, ok := win.sceneEvent(event); ok {
+			handled := false
+			if handler, exists := win.scene.(SceneEventHandler); exists {
+				handled = handler.HandleEvent(translated)
+			}
+			if translated.Type == EventQuit && !handled {
+				win.running = false
+			}
+		}
+		return
+	}
 	switch event.Type {
 	case sdl.EVENT_QUIT:
 		win.running = false
@@ -376,6 +422,83 @@ func (win *Window) handleEvent(event *sdl.Event) {
 			area.ScrollWheel(wheelX, wheelY, win.font)
 			return
 		}
+	}
+}
+
+func (win *Window) sceneEvent(event *sdl.Event) (Event, bool) {
+	mods := modifiers(sdl.GetModState())
+	density := float32(win.pixelDensity())
+	switch event.Type {
+	case sdl.EVENT_QUIT:
+		return Event{Type: EventQuit, Modifiers: mods}, true
+	case sdl.EVENT_KEY_DOWN:
+		key := event.KeyboardEvent()
+		if key == nil {
+			return Event{}, false
+		}
+		return Event{
+			Type: EventKeyDown, Key: keyChord(key.Key, key.Mod), Repeat: key.Repeat,
+			Modifiers: modifiers(key.Mod),
+		}, true
+	case sdl.EVENT_TEXT_INPUT:
+		text := event.TextInputEvent()
+		if text == nil {
+			return Event{}, false
+		}
+		return Event{Type: EventTextInput, Text: text.Text, Modifiers: mods}, true
+	case sdl.EVENT_MOUSE_BUTTON_DOWN, sdl.EVENT_MOUSE_BUTTON_UP:
+		mouse := event.MouseButtonEvent()
+		if mouse == nil {
+			return Event{}, false
+		}
+		typeOfEvent := EventMouseDown
+		if event.Type == sdl.EVENT_MOUSE_BUTTON_UP {
+			typeOfEvent = EventMouseUp
+		}
+		x, y := rendererPoint(mouse.X, mouse.Y, density)
+		return Event{
+			Type: typeOfEvent, X: x, Y: y,
+			Button: mouseButton(mouse.Button), Clicks: mouse.Clicks, Modifiers: mods,
+		}, true
+	case sdl.EVENT_MOUSE_MOTION:
+		mouse := event.MouseMotionEvent()
+		if mouse == nil {
+			return Event{}, false
+		}
+		x, y := rendererPoint(mouse.X, mouse.Y, density)
+		return Event{
+			Type: EventMouseMove, X: x, Y: y,
+			Modifiers: mods,
+		}, true
+	case sdl.EVENT_MOUSE_WHEEL:
+		wheel := event.MouseWheelEvent()
+		if wheel == nil {
+			return Event{}, false
+		}
+		x, y := rendererPoint(wheel.MouseX, wheel.MouseY, density)
+		return Event{
+			Type: EventMouseWheel, X: x, Y: y,
+			WheelX: wheel.X, WheelY: wheel.Y, Modifiers: mods,
+		}, true
+	default:
+		return Event{}, false
+	}
+}
+
+func rendererPoint(x, y, density float32) (float32, float32) {
+	return x * density, y * density
+}
+
+func mouseButton(button uint8) MouseButton {
+	switch button {
+	case uint8(sdl.BUTTON_LEFT):
+		return MouseLeft
+	case uint8(sdl.BUTTON_MIDDLE):
+		return MouseMiddle
+	case uint8(sdl.BUTTON_RIGHT):
+		return MouseRight
+	default:
+		return MouseButton(button)
 	}
 }
 

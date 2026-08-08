@@ -16,6 +16,8 @@ Features:
 - Image components with contain, cover, stretch, and native-size fitting
 - Unicode text inputs and multiline text areas with wrapping, line numbers,
   selection, clipboard editing, and horizontal/vertical scrolling
+- Public facing retained-mode ui and custom-scene API for application-
+  specific interfaces such as editors, canvases, and media tools
 
 ![Demo app showcasing most widgets and features](images/demo.png)
 
@@ -39,9 +41,9 @@ console window; omit it during development to retain console logs and panic outp
 
 ```go
 import (
-	"goak/internal/goak"
-	"goak/internal/goak/components"
-	"goak/internal/goak/layout"
+	"github.com/tacf/goak"
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
 )
 ```
 
@@ -63,3 +65,21 @@ notes := panel.CreateTextArea(
 notes.SetWrap(true)
 notes.SetLineNumbers(true)
 ```
+
+### Custom scenes
+
+Applications with interfaces that do not fit retained widgets can implement
+`goak.Scene`. This gives the framework two integration levels:
+
+- `App.Run(ui)` hosts Goak's retained components and automatic layout.
+- `App.RunScene(scene)` hosts a custom interface while retaining Goak's window,
+  renderer selection, dispatch queue, input normalization, HiDPI coordinates,
+  clipboard, cursor, text-input lifecycle, and frame presentation.
+
+Scenes receive renderer-pixel mouse coordinates and stable keyboard chords
+such as `ctrl+shift+p`. Implement `SceneInitializer`, `SceneEventHandler`,
+`SceneUpdater`, or `SceneCloser` only when those hooks are needed. Returning
+true from a quit event lets the application defer shutdown, for example to
+confirm unsaved work. The SDL renderer remains available through
+`SceneContext.Renderer()` as an advanced drawing escape hatch. See
+`examples/scene` for the minimal lifecycle.

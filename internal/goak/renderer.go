@@ -1,5 +1,10 @@
 package goak
 
+import (
+	"github.com/Zyko0/go-sdl3/bin/binsdl"
+	"github.com/Zyko0/go-sdl3/sdl"
+)
+
 // RendererDriver selects the SDL 2D rendering driver used by a window.
 //
 // The predefined values cover SDL's built-in drivers. A custom SDL driver name
@@ -7,6 +12,8 @@ package goak
 type RendererDriver string
 
 const (
+	// RendererAuto lets SDL select the best available renderer.
+	RendererAuto     RendererDriver = "auto"
 	RendererSoftware RendererDriver = "software"
 	// RendererGPU uses SDL's cross-platform GPU renderer; SDL selects the
 	// appropriate GPU device backend for the operating system.
@@ -26,4 +33,20 @@ func normalizeRendererDriver(driver RendererDriver) RendererDriver {
 		return RendererSoftware
 	}
 	return driver
+}
+
+// RendererDrivers returns the SDL renderer names available on this system.
+// Call it during startup, before creating a window.
+func RendererDrivers() ([]string, error) {
+	library := binsdl.Load()
+	defer library.Unload()
+	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
+		return nil, err
+	}
+	defer sdl.Quit()
+	drivers := make([]string, 0, sdl.GetNumRenderDrivers())
+	for i := 0; i < sdl.GetNumRenderDrivers(); i++ {
+		drivers = append(drivers, sdl.GetRenderDriver(i))
+	}
+	return drivers, nil
 }
