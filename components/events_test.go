@@ -1,10 +1,40 @@
 package components
 
 import (
+	"errors"
+	"math"
 	"testing"
 
 	"github.com/tacf/goak/layout"
 )
+
+func TestUIVisibilityInteractionAndFontConfiguration(t *testing.T) {
+	ui := NewUI()
+	if !ui.Visible() || !ui.Interactive() || ui.FontSize() != 20 {
+		t.Fatalf("unexpected UI defaults: visible=%v interactive=%v font=%v",
+			ui.Visible(), ui.Interactive(), ui.FontSize())
+	}
+
+	ui.SetVisible(false)
+	ui.SetInteractive(false)
+	if err := ui.SetFontSize(16); err != nil {
+		t.Fatal(err)
+	}
+	if ui.Visible() || ui.Interactive() || ui.FontSize() != 16 {
+		t.Fatalf("unexpected configured UI: visible=%v interactive=%v font=%v",
+			ui.Visible(), ui.Interactive(), ui.FontSize())
+	}
+
+	if err := ui.SetFontSize(math.NaN()); !errors.Is(err, ErrInvalidFontSize) {
+		t.Fatalf("NaN font error = %v", err)
+	}
+	if err := ui.SetFontSize(0); !errors.Is(err, ErrInvalidFontSize) {
+		t.Fatalf("zero font error = %v", err)
+	}
+	if ui.FontSize() != 16 {
+		t.Fatalf("invalid font size changed UI font to %v", ui.FontSize())
+	}
+}
 
 func TestButtonRunsActionAndTypedCallback(t *testing.T) {
 	button := NewButton(layout.AutoSize(), layout.AutoSize(), "Run")
