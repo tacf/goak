@@ -22,6 +22,7 @@ const (
 // numbers. It supports vertical scrolling and horizontal scrolling when wrap
 // is disabled.
 type TextArea struct {
+	Element
 	c            *layout.Container
 	editor       textEditorState
 	placeholder  string
@@ -35,13 +36,15 @@ type TextArea struct {
 
 // NewTextArea creates a standalone multiline text area.
 func NewTextArea(width, height layout.Size, text string) *TextArea {
-	return &TextArea{
+	area := &TextArea{
 		c:            layout.NewContainer(width, height),
 		editor:       newTextEditorState(text, true),
 		wrap:         true,
 		lineNumbers:  true,
 		revealCursor: true,
 	}
+	area.Element.init(area)
+	return area
 }
 
 // Container returns the text area's underlying layout node.

@@ -11,6 +11,7 @@ import (
 
 // Slider is a horizontal slider control for selecting values in a range.
 type Slider struct {
+	Element
 	c          *layout.Container
 	label      string
 	min        float64
@@ -27,7 +28,7 @@ func NewSlider(width, height layout.Size, label string, min, max, initial float6
 	if min > max {
 		min, max = max, min
 	}
-	return &Slider{
+	slider := &Slider{
 		c:         layout.NewContainer(width, height),
 		label:     label,
 		min:       min,
@@ -36,6 +37,8 @@ func NewSlider(width, height layout.Size, label string, min, max, initial float6
 		step:      (max - min) / 100.0,
 		showValue: true,
 	}
+	slider.Element.init(slider)
+	return slider
 }
 
 // Bounds returns the computed layout rect after Layout.

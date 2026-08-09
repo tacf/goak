@@ -7,17 +7,13 @@ import (
 	"github.com/Zyko0/go-sdl3/sdl"
 )
 
-// MenuBarWidthMode controls how the menu bar width is computed.
 type MenuBarWidthMode int
 
 const (
-	// MenuBarWidthAuto sizes the bar to its items.
 	MenuBarWidthAuto MenuBarWidthMode = iota
-	// MenuBarWidthFull stretches the bar to full parent width.
 	MenuBarWidthFull
 )
 
-// MenuEntryKind describes a submenu entry kind.
 type MenuEntryKind int
 
 const (
@@ -25,184 +21,348 @@ const (
 	MenuEntrySeparator
 )
 
-// MenuEntry is a submenu row: either a clickable item or a separator.
 type MenuEntry struct {
 	Kind   MenuEntryKind
 	Label  string
 	action Action
 }
 
-// MenuItem is a top-level menu label and optional submenu.
 type MenuItem struct {
-	Label    string
+	label    string
 	action   Action
-	SubItems []MenuEntry
+	subItems []MenuEntry
+	owner    *MenuBar
 }
 
-// SetAction replaces the top-level menu action.
+// NewMenuItem creates a detached menu item for use with MenuBar.SetItems.
+func NewMenuItem(label string, action Action) MenuItem {
+	return MenuItem{label: label, action: action}
+}
+
+func (m *MenuItem) Label() string {
+	if m == nil {
+		return ""
+	}
+	return m.label
+}
+
+func (m *MenuItem) SetLabel(label string) {
+	if m == nil || m.label == label {
+		return
+	}
+	m.label = label
+	m.touch()
+}
+
 func (m *MenuItem) SetAction(action Action) {
-	m.action = action
+	if m != nil {
+		m.action = action
+	}
 }
 
-// AddSubItem appends a clickable submenu item.
+func (m *MenuItem) SubItems() []MenuEntry {
+	if m == nil {
+		return nil
+	}
+	return append([]MenuEntry(nil), m.subItems...)
+}
+
 func (m *MenuItem) AddSubItem(label string, action Action) *MenuItem {
-	m.SubItems = append(m.SubItems, MenuEntry{
-		Kind:   MenuEntryItem,
-		Label:  label,
-		action: action,
-	})
+	if m == nil {
+		return nil
+	}
+	m.subItems = append(m.subItems, MenuEntry{Kind: MenuEntryItem, Label: label, action: action})
+	m.touch()
 	return m
 }
 
-// AddSeparator appends a submenu separator.
 func (m *MenuItem) AddSeparator() *MenuItem {
-	m.SubItems = append(m.SubItems, MenuEntry{Kind: MenuEntrySeparator})
+	if m == nil {
+		return nil
+	}
+	m.subItems = append(m.subItems, MenuEntry{Kind: MenuEntrySeparator})
+	m.touch()
 	return m
 }
 
-// MenuBar is a horizontal menu strip with optional dropdown submenus.
+func (m *MenuItem) touch() {
+	if m.owner != nil {
+		m.owner.invalidateGeometry()
+	}
+}
+
+// MenuBar is a horizontal menu strip with a viewport-aware popup submenu.
 type MenuBar struct {
-	ui        *UI
+	Element
 	c         *layout.Container
-	WidthMode MenuBarWidthMode
-	Items     []MenuItem
+	widthMode MenuBarWidthMode
+	items     []*MenuItem
 
 	openIndex int
 	hoverTop  int
 	hoverSub  int
 	onAction  func(MenuActionEvent)
+	viewport  layout.Rect
+
+	metricsDirty bool
+	metricsFont  *rendering.Font
+	measureText  func(string) float64
+	topWidths    []float64
+	topRects     []layout.Rect
+	subRects     []layout.Rect
+	subBounds    layout.Rect
+	scrollY      float64
 }
 
-// NewMenuBar creates a standalone menu bar (not in the tree).
 func NewMenuBar(height layout.Size, widthMode MenuBarWidthMode) *MenuBar {
-	width := layout.AutoSize()
-	if widthMode == MenuBarWidthFull {
-		width = layout.PercentOf(100)
+	menu := &MenuBar{
+		c:            layout.NewContainer(layout.AutoSize(), height),
+		widthMode:    normalizedMenuBarWidthMode(widthMode),
+		openIndex:    -1,
+		hoverTop:     -1,
+		hoverSub:     -1,
+		metricsDirty: true,
 	}
-	return &MenuBar{
-		c:         layout.NewContainer(width, height),
-		WidthMode: widthMode,
-		openIndex: -1,
-		hoverTop:  -1,
-		hoverSub:  -1,
-	}
+	menu.Element.init(menu)
+	menu.applyWidthMode()
+	return menu
 }
 
-// Container returns the layout node for this menu bar (internal use).
 func (m *MenuBar) Container() *layout.Container { return m.c }
+func (m *MenuBar) Bounds() layout.Rect          { return m.c.Bounds }
 
-// Bounds returns the computed layout rect after Layout.
-func (m *MenuBar) Bounds() layout.Rect { return m.c.Bounds }
+func (m *MenuBar) WidthMode() MenuBarWidthMode { return m.widthMode }
 
-// AddItem appends a top-level menu item.
+func (m *MenuBar) SetWidthMode(mode MenuBarWidthMode) {
+	mode = normalizedMenuBarWidthMode(mode)
+	if m.widthMode == mode {
+		return
+	}
+	m.widthMode = mode
+	m.applyWidthMode()
+	m.invalidateGeometry()
+}
+
+func normalizedMenuBarWidthMode(mode MenuBarWidthMode) MenuBarWidthMode {
+	if mode == MenuBarWidthFull {
+		return MenuBarWidthFull
+	}
+	return MenuBarWidthAuto
+}
+
+func (m *MenuBar) applyWidthMode() {
+	if m.widthMode == MenuBarWidthFull {
+		m.c.Width = layout.PercentOf(100)
+	} else if m.c.Width.Kind != layout.Static {
+		m.c.Width = layout.AutoSize()
+	}
+}
+
+func (m *MenuBar) Items() []MenuItem {
+	if m == nil {
+		return nil
+	}
+	items := make([]MenuItem, len(m.items))
+	for index := range m.items {
+		items[index] = cloneMenuItem(*m.items[index], nil)
+	}
+	return items
+}
+
+func (m *MenuBar) SetItems(items []MenuItem) {
+	if m == nil {
+		return
+	}
+	m.items = make([]*MenuItem, len(items))
+	for index := range items {
+		item := cloneMenuItem(items[index], m)
+		m.items[index] = &item
+	}
+	m.Close()
+	m.invalidateGeometry()
+}
+
+func cloneMenuItem(item MenuItem, owner *MenuBar) MenuItem {
+	return MenuItem{
+		label:    item.label,
+		action:   item.action,
+		subItems: append([]MenuEntry(nil), item.subItems...),
+		owner:    owner,
+	}
+}
+
 func (m *MenuBar) AddItem(label string, action Action) *MenuItem {
-	m.Items = append(m.Items, MenuItem{Label: label, action: action})
-	return &m.Items[len(m.Items)-1]
+	item := &MenuItem{label: label, action: action, owner: m}
+	m.items = append(m.items, item)
+	m.invalidateGeometry()
+	return item
 }
 
-// SetOnAction assigns a callback for all activated menu actions.
-func (m *MenuBar) SetOnAction(onAction func(MenuActionEvent)) {
-	m.onAction = onAction
-}
+func (m *MenuBar) SetOnAction(onAction func(MenuActionEvent)) { m.onAction = onAction }
 
-// IsOpen reports whether any submenu is currently open.
-func (m *MenuBar) IsOpen() bool { return m.openIndex >= 0 }
-
-// OpenIndex returns the currently open top-level item index, or -1.
-func (m *MenuBar) OpenIndex() int { return m.openIndex }
-
-// HoverTopIndex returns the top-level hovered index, or -1.
+func (m *MenuBar) IsOpen() bool       { return m.openIndex >= 0 }
+func (m *MenuBar) OpenIndex() int     { return m.openIndex }
 func (m *MenuBar) HoverTopIndex() int { return m.hoverTop }
-
-// HoverSubIndex returns the hovered submenu index, or -1.
 func (m *MenuBar) HoverSubIndex() int { return m.hoverSub }
 
-// Close closes any open submenu.
 func (m *MenuBar) Close() {
 	m.openIndex = -1
 	m.hoverSub = -1
+	m.scrollY = 0
+	m.subRects = m.subRects[:0]
+	m.subBounds = layout.Rect{}
 }
 
-// SyncWidth updates layout width based on width mode.
-func (m *MenuBar) SyncWidth() {
-	if m.WidthMode == MenuBarWidthFull {
+// SyncWidth measures labels with the active font and updates intrinsic width.
+func (m *MenuBar) SyncWidth(font *rendering.Font) {
+	m.syncWidth(font, func(text string) float64 {
+		return measuredTextWidth(font, text)
+	})
+}
+
+func (m *MenuBar) syncWidth(font *rendering.Font, measure func(string) float64) {
+	if m == nil {
+		return
+	}
+	if measure == nil {
+		measure = func(text string) float64 { return measuredTextWidth(font, text) }
+	}
+	if m.metricsDirty || m.metricsFont != font || len(m.topWidths) != len(m.items) {
+		m.topWidths = resizeFloatSlice(m.topWidths, len(m.items))
+		for index, item := range m.items {
+			m.topWidths[index] = measure(item.label) + menuTopPaddingX*2
+		}
+		m.metricsDirty = false
+		m.metricsFont = font
+		m.measureText = measure
+	}
+	if m.widthMode == MenuBarWidthFull {
 		m.c.Width = layout.PercentOf(100)
 		return
 	}
-	w := menuBarPaddingX * 2
-	for _, it := range m.Items {
-		w += menuTopItemWidth(it.Label)
+	width := menuBarPaddingX * 2
+	for _, itemWidth := range m.topWidths {
+		width += itemWidth
 	}
-	if w < 40 {
-		w = 40
+	width = max(width, 40)
+	if m.c.Width.Kind != layout.Static || m.c.Width.Value != width {
+		m.c.Width = layout.StaticPx(width)
+		if m.ui != nil {
+			m.ui.invalidateLayout()
+		}
 	}
-	m.c.Width = layout.StaticPx(w)
 }
 
-// TopItemRects returns top-level item bounds for drawing and hit-testing.
-func (m *MenuBar) TopItemRects() []layout.Rect {
-	out := make([]layout.Rect, 0, len(m.Items))
+func resizeFloatSlice(values []float64, length int) []float64 {
+	if cap(values) < length {
+		return make([]float64, length)
+	}
+	return values[:length]
+}
+
+func measuredTextWidth(font *rendering.Font, text string) float64 {
+	if font == nil {
+		return float64(len([]rune(text))) * 8
+	}
+	width, _ := font.Measure(text)
+	return width
+}
+
+// Place updates cached bar and submenu geometry for a logical viewport.
+func (m *MenuBar) Place(viewport layout.Rect) {
+	if m == nil {
+		return
+	}
+	m.viewport = viewport
+	m.topRects = m.topRects[:0]
 	x := m.c.Bounds.X + menuBarPaddingX
-	y := m.c.Bounds.Y
-	h := m.c.Bounds.H
-	for _, it := range m.Items {
-		w := menuTopItemWidth(it.Label)
-		out = append(out, layout.Rect{X: x, Y: y, W: w, H: h})
-		x += w
+	for index := range m.items {
+		width := measuredTextWidth(m.metricsFont, m.items[index].label) + menuTopPaddingX*2
+		if index < len(m.topWidths) {
+			width = m.topWidths[index]
+		}
+		m.topRects = append(m.topRects, layout.Rect{X: x, Y: m.c.Bounds.Y, W: width, H: m.c.Bounds.H})
+		x += width
 	}
-	return out
+	m.placeSubmenu()
 }
 
-// OpenSubItemRects returns rects for the currently open submenu entries.
-func (m *MenuBar) OpenSubItemRects() []layout.Rect {
-	if m.openIndex < 0 || m.openIndex >= len(m.Items) {
-		return nil
+func (m *MenuBar) placeSubmenu() {
+	m.subRects = m.subRects[:0]
+	m.subBounds = layout.Rect{}
+	if m.openIndex < 0 || m.openIndex >= len(m.items) || m.openIndex >= len(m.topRects) {
+		return
 	}
-	top := m.TopItemRects()
-	if m.openIndex >= len(top) {
-		return nil
+	item := m.items[m.openIndex]
+	if len(item.subItems) == 0 {
+		return
 	}
-	item := m.Items[m.openIndex]
-	if len(item.SubItems) == 0 {
-		return nil
-	}
-	dropW := m.openDropdownWidth(item)
-	x := top[m.openIndex].X
+	width := m.openDropdownWidth(item)
+	contentHeight := submenuContentHeight(item.subItems)
+	x := m.topRects[m.openIndex].X
 	y := m.c.Bounds.Y + m.c.Bounds.H
-
-	rects := make([]layout.Rect, 0, len(item.SubItems))
-	for _, ent := range item.SubItems {
-		h := menuSubItemHeight
-		if ent.Kind == MenuEntrySeparator {
-			h = menuSubSeparatorHeight
+	height := contentHeight
+	if finiteValue(m.viewport.X) && finiteValue(m.viewport.Y) &&
+		validPositiveLength(m.viewport.W) && validPositiveLength(m.viewport.H) {
+		width = min(width, m.viewport.W)
+		x = min(max(x, m.viewport.X), m.viewport.X+m.viewport.W-width)
+		below := max(0, m.viewport.Y+m.viewport.H-y)
+		above := max(0, m.c.Bounds.Y-m.viewport.Y)
+		if contentHeight > below && above > below {
+			height = min(contentHeight, above)
+			y = m.c.Bounds.Y - height
+		} else {
+			height = min(contentHeight, below)
 		}
-		rects = append(rects, layout.Rect{X: x, Y: y, W: dropW, H: h})
-		y += h
 	}
-	return rects
+	m.subBounds = layout.Rect{X: x, Y: y, W: width, H: height}
+	m.scrollY = min(max(m.scrollY, 0), m.maxScroll())
+	rowY := y - m.scrollY
+	for _, entry := range item.subItems {
+		rowHeight := menuSubItemHeight
+		if entry.Kind == MenuEntrySeparator {
+			rowHeight = menuSubSeparatorHeight
+		}
+		m.subRects = append(m.subRects, layout.Rect{X: x, Y: rowY, W: width, H: rowHeight})
+		rowY += rowHeight
+	}
 }
 
-// OpenSubMenuBounds returns the full dropdown bounds for the currently open submenu.
-func (m *MenuBar) OpenSubMenuBounds() layout.Rect {
-	rects := m.OpenSubItemRects()
-	if len(rects) == 0 {
-		return layout.Rect{}
+func submenuContentHeight(entries []MenuEntry) float64 {
+	height := 0.0
+	for _, entry := range entries {
+		if entry.Kind == MenuEntrySeparator {
+			height += menuSubSeparatorHeight
+		} else {
+			height += menuSubItemHeight
+		}
 	}
-	var h float64
-	for _, r := range rects {
-		h += r.H
-	}
-	return layout.Rect{X: rects[0].X, Y: rects[0].Y, W: rects[0].W, H: h}
+	return height
 }
 
-// OnMouseMove updates hover state. If a submenu is open, moving across top
-// items switches the open submenu.
+func (m *MenuBar) TopItemRects() []layout.Rect {
+	m.SyncWidth(m.metricsFont)
+	m.Place(m.viewport)
+	return append([]layout.Rect(nil), m.topRects...)
+}
+
+func (m *MenuBar) OpenSubItemRects() []layout.Rect {
+	m.Place(m.viewport)
+	return append([]layout.Rect(nil), m.subRects...)
+}
+
+func (m *MenuBar) OpenSubMenuBounds() layout.Rect { return m.subBounds }
+
 func (m *MenuBar) OnMouseMove(x, y float64) {
+	m.SyncWidth(m.metricsFont)
+	m.Place(m.viewport)
 	m.hoverTop = m.hitTopItem(x, y)
-	if m.openIndex >= 0 && m.hoverTop >= 0 && m.hoverTop != m.openIndex {
-		if len(m.Items[m.hoverTop].SubItems) > 0 {
-			m.openIndex = m.hoverTop
-		}
+	if m.openIndex >= 0 && m.hoverTop >= 0 && m.hoverTop != m.openIndex &&
+		len(m.items[m.hoverTop].subItems) > 0 {
+		m.openIndex = m.hoverTop
+		m.hoverSub = -1
+		m.scrollY = 0
+		m.placeSubmenu()
 	}
 	if m.openIndex >= 0 {
 		m.hoverSub = m.hitSubItem(x, y, false)
@@ -211,22 +371,26 @@ func (m *MenuBar) OnMouseMove(x, y float64) {
 	}
 }
 
-// OnMouseDown handles menu clicks. Returns true when the click was consumed.
 func (m *MenuBar) OnMouseDown(x, y float64) bool {
+	m.SyncWidth(m.metricsFont)
+	m.Place(m.viewport)
 	top := m.hitTopItem(x, y)
 	if top >= 0 {
-		item := m.Items[top]
-		if len(item.SubItems) == 0 {
-			item.action.Invoke()
-			m.emitAction(top, -1, item.Label)
+		item := m.items[top]
+		if len(item.subItems) == 0 {
 			m.Close()
+			item.action.Invoke()
+			m.emitAction(top, -1, item.label)
 			return true
 		}
 		if m.openIndex == top {
 			m.Close()
 		} else {
 			m.openIndex = top
-			m.hoverSub = -1
+			m.hoverSub = m.firstSubItem()
+			m.scrollY = 0
+			m.placeSubmenu()
+			m.revealHovered()
 		}
 		return true
 	}
@@ -234,70 +398,208 @@ func (m *MenuBar) OnMouseDown(x, y float64) bool {
 	if m.openIndex >= 0 {
 		sub := m.hitSubItem(x, y, true)
 		if sub >= 0 {
-			ent := m.Items[m.openIndex].SubItems[sub]
-			if ent.Kind == MenuEntryItem {
-				ent.action.Invoke()
-				m.emitAction(m.openIndex, sub, ent.Label)
-				m.Close()
-				return true
-			}
+			m.activateSubItem(sub)
 			return true
 		}
 		m.Close()
+		return true
 	}
 	return false
 }
 
-func (m *MenuBar) emitAction(topIndex, subIndex int, label string) {
-	if m.onAction != nil {
-		m.onAction(MenuActionEvent{
-			Menu:     m,
-			TopIndex: topIndex,
-			SubIndex: subIndex,
-			Label:    label,
-		})
+// HandleKey provides consistent keyboard navigation for open submenus.
+func (m *MenuBar) HandleKey(key string) bool {
+	if !m.IsOpen() {
+		return false
+	}
+	switch key {
+	case "left":
+		m.moveTop(-1)
+	case "right":
+		m.moveTop(1)
+	case "up":
+		m.moveSub(-1)
+	case "down":
+		m.moveSub(1)
+	case "home":
+		m.hoverSub = m.firstSubItem()
+		m.revealHovered()
+	case "end":
+		m.hoverSub = m.lastSubItem()
+		m.revealHovered()
+	case "return", "space":
+		m.activateSubItem(m.hoverSub)
+	case "escape":
+		m.Close()
+	default:
+		return false
+	}
+	return true
+}
+
+func (m *MenuBar) ScrollWheel(y float64) {
+	if !m.IsOpen() || y == 0 {
+		return
+	}
+	m.scrollY = min(max(m.scrollY-y*menuSubItemHeight, 0), m.maxScroll())
+	m.placeSubmenu()
+}
+
+func (m *MenuBar) moveTop(delta int) {
+	if len(m.items) == 0 || delta == 0 {
+		return
+	}
+	index := m.openIndex
+	for range len(m.items) {
+		index = (index + delta + len(m.items)) % len(m.items)
+		if len(m.items[index].subItems) > 0 {
+			m.openIndex = index
+			m.hoverTop = index
+			m.hoverSub = m.firstSubItem()
+			m.scrollY = 0
+			m.placeSubmenu()
+			m.revealHovered()
+			return
+		}
 	}
 }
 
-func (m *MenuBar) openDropdownWidth(item MenuItem) float64 {
-	w := menuSubContentPaddingX * 2
-	for _, ent := range item.SubItems {
-		if ent.Kind == MenuEntryItem {
-			tw := menuTextWidth(ent.Label)
-			if tw+menuSubContentPaddingX*2 > w {
-				w = tw + menuSubContentPaddingX*2
-			}
+func (m *MenuBar) moveSub(delta int) {
+	if m.openIndex < 0 || m.openIndex >= len(m.items) || delta == 0 {
+		return
+	}
+	entries := m.items[m.openIndex].subItems
+	if len(entries) == 0 {
+		return
+	}
+	index := m.hoverSub
+	if index < 0 {
+		if delta > 0 {
+			index = -1
+		} else {
+			index = 0
 		}
 	}
-	if w < 120 {
-		w = 120
+	for range len(entries) {
+		index = (index + delta + len(entries)) % len(entries)
+		if entries[index].Kind == MenuEntryItem {
+			m.hoverSub = index
+			m.revealHovered()
+			return
+		}
 	}
-	return w
+}
+
+func (m *MenuBar) firstSubItem() int {
+	if m.openIndex < 0 || m.openIndex >= len(m.items) {
+		return -1
+	}
+	for index, entry := range m.items[m.openIndex].subItems {
+		if entry.Kind == MenuEntryItem {
+			return index
+		}
+	}
+	return -1
+}
+
+func (m *MenuBar) lastSubItem() int {
+	if m.openIndex < 0 || m.openIndex >= len(m.items) {
+		return -1
+	}
+	entries := m.items[m.openIndex].subItems
+	for index := len(entries) - 1; index >= 0; index-- {
+		if entries[index].Kind == MenuEntryItem {
+			return index
+		}
+	}
+	return -1
+}
+
+func (m *MenuBar) revealHovered() {
+	if m.hoverSub < 0 || m.hoverSub >= len(m.subRects) {
+		return
+	}
+	row := m.subRects[m.hoverSub]
+	if row.Y < m.subBounds.Y {
+		m.scrollY -= m.subBounds.Y - row.Y
+	} else if bottom := row.Y + row.H; bottom > m.subBounds.Y+m.subBounds.H {
+		m.scrollY += bottom - (m.subBounds.Y + m.subBounds.H)
+	}
+	m.scrollY = min(max(m.scrollY, 0), m.maxScroll())
+	m.placeSubmenu()
+}
+
+func (m *MenuBar) maxScroll() float64 {
+	if m.openIndex < 0 || m.openIndex >= len(m.items) {
+		return 0
+	}
+	return max(0, submenuContentHeight(m.items[m.openIndex].subItems)-m.subBounds.H)
+}
+
+func (m *MenuBar) activateSubItem(index int) {
+	if m.openIndex < 0 || m.openIndex >= len(m.items) {
+		return
+	}
+	top := m.openIndex
+	entries := m.items[top].subItems
+	if index < 0 || index >= len(entries) || entries[index].Kind != MenuEntryItem {
+		return
+	}
+	entry := entries[index]
+	m.Close()
+	entry.action.Invoke()
+	m.emitAction(top, index, entry.Label)
+}
+
+func (m *MenuBar) emitAction(topIndex, subIndex int, label string) {
+	if m.onAction != nil {
+		m.onAction(MenuActionEvent{Menu: m, TopIndex: topIndex, SubIndex: subIndex, Label: label})
+	}
+}
+
+func (m *MenuBar) openDropdownWidth(item *MenuItem) float64 {
+	width := 120.0
+	for _, entry := range item.subItems {
+		if entry.Kind == MenuEntryItem {
+			textWidth := measuredTextWidth(m.metricsFont, entry.Label)
+			if m.measureText != nil {
+				textWidth = m.measureText(entry.Label)
+			}
+			width = max(width, textWidth+menuSubContentPaddingX*2)
+		}
+	}
+	return width
 }
 
 func (m *MenuBar) hitTopItem(x, y float64) int {
-	for i, r := range m.TopItemRects() {
-		if rendering.PointWithinBounds(x, y, r) {
-			return i
+	for index, rect := range m.topRects {
+		if rendering.PointWithinBounds(x, y, rect) {
+			return index
 		}
 	}
 	return -1
 }
 
 func (m *MenuBar) hitSubItem(x, y float64, includeSeparator bool) int {
-	rects := m.OpenSubItemRects()
-	if len(rects) == 0 || m.openIndex < 0 || m.openIndex >= len(m.Items) {
+	if !rendering.PointWithinBounds(x, y, m.subBounds) || m.openIndex < 0 || m.openIndex >= len(m.items) {
 		return -1
 	}
-	for i, r := range rects {
-		if rendering.PointWithinBounds(x, y, r) {
-			if !includeSeparator && m.Items[m.openIndex].SubItems[i].Kind == MenuEntrySeparator {
+	for index, rect := range m.subRects {
+		if rendering.PointWithinBounds(x, y, rect) {
+			if !includeSeparator && m.items[m.openIndex].subItems[index].Kind == MenuEntrySeparator {
 				return -1
 			}
-			return i
+			return index
 		}
 	}
 	return -1
+}
+
+func (m *MenuBar) invalidateGeometry() {
+	m.metricsDirty = true
+	if m.ui != nil {
+		m.ui.invalidateLayout()
+	}
 }
 
 const (
@@ -306,73 +608,52 @@ const (
 	menuSubContentPaddingX = 10.0
 	menuSubItemHeight      = 22.0
 	menuSubSeparatorHeight = 8.0
-	menuCharWidth          = 8.0
 )
 
-func menuTopItemWidth(label string) float64 {
-	return menuTextWidth(label) + menuTopPaddingX*2
-}
-
-func menuTextWidth(label string) float64 {
-	return float64(len([]rune(label))) * menuCharWidth
-}
-
-// DrawBar draws the menu strip and top-level items.
 func (m *MenuBar) DrawBar(renderer *sdl.Renderer, font *rendering.Font, theme MenuTheme) {
-	mb := m.Bounds()
-	rendering.FillRect(renderer, mb.X, mb.Y, mb.W, mb.H, theme.Fill)
-
-	topRects := m.TopItemRects()
-	for i, r := range topRects {
-		if m.HoverTopIndex() == i {
-			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Hover)
-		}
-		if m.OpenIndex() == i {
-			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Active)
-		}
-		textY := textTopY(m.Items[i].Label, font, r.Y, r.H)
-		rendering.DrawText(renderer, m.Items[i].Label, font, r.X+8, textY, theme.Text)
-	}
-
-	// Draw the boundary last so item state fills cannot cover it.
-	rendering.DrawStrokeRect(renderer, mb.X, mb.Y, mb.W, mb.H, 1.0, theme.Stroke)
-}
-
-// DrawDropdown draws the currently open dropdown, if any.
-func (m *MenuBar) DrawDropdown(renderer *sdl.Renderer, font *rendering.Font, theme MenuTheme) {
-	if !m.IsOpen() {
-		return
-	}
-
-	drop := m.OpenSubMenuBounds()
-	open := m.OpenIndex()
-	if drop.W <= 0 || drop.H <= 0 || open < 0 || open >= len(m.Items) {
-		return
-	}
-
-	rendering.FillRect(renderer, drop.X, drop.Y, drop.W, drop.H, theme.Fill)
-
-	subRects := m.OpenSubItemRects()
-	subItems := m.Items[open].SubItems
-	for i, r := range subRects {
-		if i >= len(subItems) {
+	bounds := m.Bounds()
+	rendering.FillRect(renderer, bounds.X, bounds.Y, bounds.W, bounds.H, theme.Fill)
+	for index, rect := range m.topRects {
+		if index >= len(m.items) {
 			break
 		}
-		entry := subItems[i]
+		if m.hoverTop == index {
+			rendering.FillRect(renderer, rect.X, rect.Y, rect.W, rect.H, theme.Hover)
+		}
+		if m.openIndex == index {
+			rendering.FillRect(renderer, rect.X, rect.Y, rect.W, rect.H, theme.Active)
+		}
+		textY := textTopY(m.items[index].label, font, rect.Y, rect.H)
+		rendering.DrawText(renderer, m.items[index].label, font, rect.X+menuTopPaddingX, textY, theme.Text)
+	}
+	rendering.DrawStrokeRect(renderer, bounds.X, bounds.Y, bounds.W, bounds.H, 1, theme.Stroke)
+}
+
+func (m *MenuBar) DrawDropdown(renderer *sdl.Renderer, font *rendering.Font, theme MenuTheme) {
+	if !m.IsOpen() || m.subBounds.W <= 0 || m.subBounds.H <= 0 ||
+		m.openIndex >= len(m.items) {
+		return
+	}
+	rendering.FillRect(renderer, m.subBounds.X, m.subBounds.Y, m.subBounds.W, m.subBounds.H, theme.Fill)
+	clip := sdl.Rect{X: int32(m.subBounds.X), Y: int32(m.subBounds.Y), W: int32(m.subBounds.W), H: int32(m.subBounds.H)}
+	_ = renderer.SetClipRect(&clip)
+	entries := m.items[m.openIndex].subItems
+	for index, rect := range m.subRects {
+		if index >= len(entries) {
+			break
+		}
+		entry := entries[index]
 		if entry.Kind == MenuEntrySeparator {
-			y := r.Y + r.H/2
-			rendering.FillRect(renderer, r.X+6, y, r.W-12, 1, theme.Separator)
+			y := rect.Y + rect.H/2
+			rendering.FillRect(renderer, rect.X+6, y, max(0, rect.W-12), 1, theme.Separator)
 			continue
 		}
-
-		if m.HoverSubIndex() == i {
-			rendering.FillRect(renderer, r.X, r.Y, r.W, r.H, theme.Hover)
+		if m.hoverSub == index {
+			rendering.FillRect(renderer, rect.X, rect.Y, rect.W, rect.H, theme.Hover)
 		}
-
-		textY := textTopY(entry.Label, font, r.Y, r.H)
-		rendering.DrawText(renderer, entry.Label, font, r.X+10, textY, theme.Text)
+		textY := textTopY(entry.Label, font, rect.Y, rect.H)
+		rendering.DrawText(renderer, entry.Label, font, rect.X+menuSubContentPaddingX, textY, theme.Text)
 	}
-
-	// Keep the dropdown boundary crisp above full-width hover fills.
-	rendering.DrawStrokeRect(renderer, drop.X, drop.Y, drop.W, drop.H, 1.0, theme.Stroke)
+	_ = renderer.SetClipRect(nil)
+	rendering.DrawStrokeRect(renderer, m.subBounds.X, m.subBounds.Y, m.subBounds.W, m.subBounds.H, 1, theme.Stroke)
 }

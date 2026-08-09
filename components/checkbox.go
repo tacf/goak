@@ -9,6 +9,7 @@ import (
 
 // Checkbox is a toggleable control with a label.
 type Checkbox struct {
+	Element
 	c         *layout.Container
 	label     string
 	checked   bool
@@ -17,7 +18,9 @@ type Checkbox struct {
 
 // NewCheckbox creates a standalone checkbox.
 func NewCheckbox(width, height layout.Size, label string) *Checkbox {
-	return &Checkbox{c: layout.NewContainer(width, height), label: label}
+	checkbox := &Checkbox{c: layout.NewContainer(width, height), label: label}
+	checkbox.Element.init(checkbox)
+	return checkbox
 }
 
 // Bounds returns the computed layout rect after Layout.

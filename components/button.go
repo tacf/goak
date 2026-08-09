@@ -9,6 +9,7 @@ import (
 
 // Button is a clickable control with a label.
 type Button struct {
+	Element
 	c       *layout.Container
 	label   string
 	action  Action
@@ -17,11 +18,16 @@ type Button struct {
 
 // NewButton creates a standalone button.
 func NewButton(width, height layout.Size, label string) *Button {
-	return &Button{c: layout.NewContainer(width, height), label: label}
+	button := &Button{c: layout.NewContainer(width, height), label: label}
+	button.Element.init(button)
+	return button
 }
 
 // Bounds returns the computed layout rect after Layout.
 func (b *Button) Bounds() layout.Rect { return b.c.Bounds }
+
+// Container returns the button's layout node.
+func (b *Button) Container() *layout.Container { return b.c }
 
 // Label returns the button text.
 func (b *Button) Label() string { return b.label }

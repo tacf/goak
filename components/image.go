@@ -28,6 +28,7 @@ const (
 
 // Image displays a standard Go image.Image.
 type Image struct {
+	Element
 	c       *layout.Container
 	source  image.Image
 	fit     ImageFit
@@ -39,11 +40,13 @@ type Image struct {
 
 // NewImage creates a standalone image component.
 func NewImage(width, height layout.Size, source image.Image) *Image {
-	return &Image{
+	component := &Image{
 		c:      layout.NewContainer(width, height),
 		source: source,
 		fit:    ImageFitContain,
 	}
+	component.Element.init(component)
+	return component
 }
 
 // Container returns the image's underlying layout node.

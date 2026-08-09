@@ -122,6 +122,7 @@ type ContextMenuTheme struct {
 	Fill         colors.Color
 	Stroke       colors.Color
 	Hover        colors.Color
+	Accent       colors.Color
 	Text         colors.Color
 	DisabledText colors.Color
 	Separator    colors.Color
@@ -211,6 +212,7 @@ func DefaultTheme() Theme {
 			Fill:         colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)),
 			Stroke:       colors.HexOr("#666", colors.RGB(102, 102, 102)),
 			Hover:        colors.HexOr("#3a3a3a", colors.RGB(58, 58, 58)),
+			Accent:       colors.HexOr("#4a9eff", colors.RGB(74, 158, 255)),
 			Text:         colors.HexOr("#eee", colors.RGB(238, 238, 238)),
 			DisabledText: colors.HexOr("#777", colors.RGB(119, 119, 119)),
 			Separator:    colors.HexOr("#555", colors.RGB(85, 85, 85)),

@@ -13,6 +13,7 @@ const textInputPadding = 7.0
 
 // TextInput is an editable single-line text box.
 type TextInput struct {
+	Element
 	c           *layout.Container
 	editor      textEditorState
 	placeholder string
@@ -23,10 +24,12 @@ type TextInput struct {
 
 // NewTextInput creates a standalone single-line text input.
 func NewTextInput(width, height layout.Size, text string) *TextInput {
-	return &TextInput{
+	input := &TextInput{
 		c:      layout.NewContainer(width, height),
 		editor: newTextEditorState(text, false),
 	}
+	input.Element.init(input)
+	return input
 }
 
 // Container returns the input's underlying layout node.

@@ -15,6 +15,7 @@ type RadioOption struct {
 
 // RadioGroup is a group of mutually exclusive radio buttons.
 type RadioGroup struct {
+	Element
 	c             *layout.Container
 	options       []RadioOption
 	selectedIndex int
@@ -25,13 +26,15 @@ type RadioGroup struct {
 
 // NewRadioGroup creates a standalone radio group. Add it with panel.AddRadioGroup(rg).
 func NewRadioGroup(width, height layout.Size, options []RadioOption) *RadioGroup {
-	return &RadioGroup{
+	group := &RadioGroup{
 		c:             layout.NewContainer(width, height),
 		options:       append([]RadioOption(nil), options...),
 		selectedIndex: -1,
 		itemHeight:    24.0,
 		hoveredIndex:  -1,
 	}
+	group.Element.init(group)
+	return group
 }
 
 // Bounds returns the computed layout rect after Layout.

@@ -10,6 +10,7 @@ import (
 
 // Label displays non-interactive text.
 type Label struct {
+	Element
 	c               *layout.Container
 	text            string
 	color           *colors.Color
@@ -19,11 +20,13 @@ type Label struct {
 
 // NewLabel creates a label with the requested layout size and text.
 func NewLabel(width, height layout.Size, text string) *Label {
-	return &Label{
+	label := &Label{
 		c:             layout.NewContainer(width, height),
 		text:          text,
 		verticalAlign: layout.AlignCenter,
 	}
+	label.Element.init(label)
+	return label
 }
 
 // Container returns the label's underlying layout node.
