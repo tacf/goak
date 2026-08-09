@@ -15,10 +15,11 @@ type glyph struct {
 	advance float32
 }
 
-// Font is an SDL_ttf font backed by the Go regular font embedded in the
-// executable. Glyphs are rasterized lazily and cached as SDL textures.
+// Font is an SDL_ttf font backed by an in-memory font source. Glyphs are
+// rasterized lazily and cached as SDL textures.
 type Font struct {
 	handle *ttf.Font
+	stream *sdl.IOStream
 	render *sdl.Renderer
 	height float64
 	space  float32
@@ -30,20 +31,37 @@ type Font struct {
 // rasterScale is the logical-to-device-pixel scale. Glyph textures are
 // rasterized at their final physical size while their metrics remain logical.
 func NewFont(renderer *sdl.Renderer, size, rasterScale float32) (*Font, error) {
+	return openFontFromBytes(renderer, goregular.TTF, size, rasterScale)
+}
+
+// NewFontFromBytes opens a TTF, OTF, or other SDL_ttf-supported font held in
+// memory. The bytes are copied into an SDL-owned stream that remains alive
+// until Font.Close. Nil or empty data selects the embedded default font.
+func NewFontFromBytes(renderer *sdl.Renderer, data []byte, size, rasterScale float32) (*Font, error) {
+	if len(data) == 0 {
+		return NewFont(renderer, size, rasterScale)
+	}
+	return openFontFromBytes(renderer, data, size, rasterScale)
+}
+
+func openFontFromBytes(renderer *sdl.Renderer, data []byte, size, rasterScale float32) (*Font, error) {
 	if rasterScale <= 0 || math.IsNaN(float64(rasterScale)) || math.IsInf(float64(rasterScale), 0) {
 		rasterScale = 1
 	}
-	stream, err := sdl.IOFromBytes(goregular.TTF)
+	stream, err := sdl.IOFromBytes(data)
 	if err != nil {
 		return nil, err
 	}
-	handle, err := ttf.OpenFontIO(stream, true, max(1, size*rasterScale))
+	// Keep ownership in Font so success and failure paths close the stream in
+	// one explicit place. IOFromBytes has already copied the caller's slice.
+	handle, err := ttf.OpenFontIO(stream, false, max(1, size*rasterScale))
 	if err != nil {
 		_ = stream.Close()
 		return nil, err
 	}
 	font := &Font{
 		handle: handle,
+		stream: stream,
 		render: renderer,
 		height: float64(handle.Height()) / float64(rasterScale),
 		scale:  rasterScale,
@@ -72,6 +90,10 @@ func (f *Font) Close() {
 	if f.handle != nil {
 		f.handle.Close()
 		f.handle = nil
+	}
+	if f.stream != nil {
+		_ = f.stream.Close()
+		f.stream = nil
 	}
 }
 
