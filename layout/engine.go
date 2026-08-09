@@ -4,7 +4,10 @@ package layout
 // Layout runs the two-pass layout: Pass 1 resolves sizes, Pass 2 assigns positions.
 // root.Bounds is set to (0, 0, viewW, viewH). Call on window resize with new viewW, viewH.
 func Layout(root *Container, viewW, viewH float64) {
-	pass1Size(root, viewW, viewH)
+	if root == nil {
+		return
+	}
+	pass1Size(root, nonnegativeFinite(viewW), nonnegativeFinite(viewH))
 	pass2Position(root, 0, 0)
 }
 
@@ -23,113 +26,246 @@ func pass1Resolved(c *Container, w, h float64) {
 	c.Bounds.W = w
 	c.Bounds.H = h
 
-	_, contentW := insetSize(w, c.Padding)
-	_, contentH := insetSize(h, c.Padding)
+	_, _, contentW, contentH := contentBox(c, w, h)
 	if len(c.Children) == 0 {
 		return
 	}
 
-	// Fixed/percent children claim space; Auto children share remaining.
-	var autoCountW, autoCountH int
-	var fixedW, fixedH float64
-	for _, child := range c.Children {
-		if child.Width.Kind == Auto {
-			autoCountW++
-		} else {
-			fixedW += resolveSize(child.Width, contentW)
+	if directionOf(c) == Row {
+		resolveMainAxis(c.Children, contentW, gaps(c), true)
+		for _, child := range c.Children {
+			child.Bounds.H = resolveSize(child.Height, contentH)
 		}
-		if child.Height.Kind == Auto {
-			autoCountH++
-		} else {
-			fixedH += resolveSize(child.Height, contentH)
+	} else {
+		resolveMainAxis(c.Children, contentH, gaps(c), false)
+		for _, child := range c.Children {
+			child.Bounds.W = resolveSize(child.Width, contentW)
 		}
-	}
-	remainingW := contentW - fixedW
-	if remainingW < 0 {
-		remainingW = 0
-	}
-	remainingH := contentH - fixedH
-	if remainingH < 0 {
-		remainingH = 0
-	}
-	childW := remainingW
-	childH := remainingH
-	if autoCountW > 0 {
-		childW = remainingW / float64(autoCountW)
-	}
-	if autoCountH > 0 {
-		childH = remainingH / float64(autoCountH)
 	}
 
 	for _, child := range c.Children {
-		cw := resolveSize(child.Width, contentW)
-		ch := resolveSize(child.Height, contentH)
-		if child.Width.Kind == Auto {
-			cw = childW
-		}
-		if child.Height.Kind == Auto {
-			ch = childH
-		}
-		pass1Resolved(child, cw, ch)
+		pass1Resolved(child, child.Bounds.W, child.Bounds.H)
 	}
 }
 
-func resolveSize(s Size, parent float64) float64 {
-	switch s.Kind {
+// resolveMainAxis preserves fixed and percentage dimensions, then shares the
+// remaining space between Auto dimensions while respecting constraints. It
+// writes directly to child bounds and performs no per-pass allocations.
+func resolveMainAxis(children []*Container, available, reserved float64, horizontal bool) {
+	fixed := max(0, reserved)
+	active := 0
+	for _, child := range children {
+		size := axisSize(child, horizontal)
+		if size.Kind != Auto {
+			resolved := resolveSize(size, available)
+			setAxisBounds(child, horizontal, resolved)
+			fixed += resolved
+			continue
+		}
+		minimum, maximum := sizeLimits(size)
+		setAxisBounds(child, horizontal, minimum)
+		fixed += minimum
+		if maximum <= 0 || minimum < maximum {
+			active++
+		}
+	}
+
+	remaining := max(0, available-fixed)
+	if remaining <= 0 {
+		return
+	}
+
+	for remaining > 1e-9 && active > 0 {
+		share := remaining / float64(active)
+		nextActive := 0
+		used := 0.0
+		for _, child := range children {
+			size := axisSize(child, horizontal)
+			if size.Kind != Auto {
+				continue
+			}
+			current := axisBounds(child, horizontal)
+			_, maximum := sizeLimits(size)
+			if maximum > 0 && current >= maximum {
+				continue
+			}
+			addition := share
+			if maximum > 0 && current+addition >= maximum {
+				addition = max(0, maximum-current)
+			}
+			current += addition
+			setAxisBounds(child, horizontal, current)
+			used += addition
+			if maximum <= 0 || current < maximum {
+				nextActive++
+			}
+		}
+		if used <= 1e-9 {
+			break
+		}
+		remaining -= used
+		active = nextActive
+	}
+}
+
+func axisSize(child *Container, horizontal bool) Size {
+	if horizontal {
+		return child.Width
+	}
+	return child.Height
+}
+
+func axisBounds(child *Container, horizontal bool) float64 {
+	if horizontal {
+		return child.Bounds.W
+	}
+	return child.Bounds.H
+}
+
+func setAxisBounds(child *Container, horizontal bool, value float64) {
+	if horizontal {
+		child.Bounds.W = value
+		return
+	}
+	child.Bounds.H = value
+}
+
+func resolveSize(size Size, parent float64) float64 {
+	value := parent
+	switch size.Kind {
 	case Static:
-		return s.Value
+		value = nonnegativeFinite(size.Value)
 	case Percent:
-		return parent * (s.Value / 100)
+		value = parent * (min(100, nonnegativeFinite(size.Value)) / 100)
 	case Auto:
-		return parent
+		// Auto fills its available space when it is resolved independently.
 	default:
-		return parent
+		// Unknown sizing modes retain the historical fill behavior.
 	}
+	return constrain(value, size)
 }
 
-// pass2Position (Pass 2): assign x,y to each node. Children stacked vertically.
+func constrain(value float64, size Size) float64 {
+	minimum, maximum := sizeLimits(size)
+	if minimum > 0 {
+		value = max(value, minimum)
+	}
+	if maximum > 0 {
+		value = min(value, maximum)
+	}
+	return value
+}
+
+func sizeLimits(size Size) (minimum, maximum float64) {
+	minimum = nonnegativeFinite(size.Min)
+	maximum = nonnegativeFinite(size.Max)
+	if maximum > 0 && maximum < minimum {
+		maximum = minimum
+	}
+	return minimum, maximum
+}
+
+// pass2Position (Pass 2): assign x,y to each node according to its direction.
 // Fills Bounds.X and Bounds.Y.
 func pass2Position(c *Container, x, y float64) {
 	c.Bounds.X = x
 	c.Bounds.Y = y
 
-	insetX, contentW := insetSize(c.Bounds.W, c.Padding)
-	insetY, contentH := insetSize(c.Bounds.H, c.Padding)
+	insetX, insetY, contentW, contentH := contentBox(c, c.Bounds.W, c.Bounds.H)
 	contentX := x + insetX
 	contentY := y + insetY
+	gap := nonnegativeFinite(c.Gap)
 
-	var totalChildH float64
-	for _, child := range c.Children {
-		totalChildH += child.Bounds.H
-	}
-
-	cy := contentY
-	switch c.VerticalAlign {
-	case AlignCenter:
-		cy = contentY + (contentH-totalChildH)/2
-	case AlignEnd:
-		cy = contentY + (contentH - totalChildH)
-	}
-
-	for _, child := range c.Children {
-		cx := contentX
-		switch c.HorizontalAlign {
-		case AlignCenter:
-			cx = contentX + (contentW-child.Bounds.W)/2
-		case AlignEnd:
-			cx = contentX + (contentW - child.Bounds.W)
+	if directionOf(c) == Row {
+		totalWidth := totalMainSize(c.Children, gap, func(child *Container) float64 {
+			return child.Bounds.W
+		})
+		cx := alignedStart(contentX, contentW, totalWidth, c.HorizontalAlign)
+		for _, child := range c.Children {
+			cy := alignItem(contentY, contentH, child.Bounds.H, c.VerticalAlign)
+			pass2Position(child, cx, cy)
+			cx += child.Bounds.W + gap
 		}
-		child.Bounds.X = cx
-		child.Bounds.Y = cy
+		return
+	}
+
+	totalHeight := totalMainSize(c.Children, gap, func(child *Container) float64 {
+		return child.Bounds.H
+	})
+	cy := alignedStart(contentY, contentH, totalHeight, c.VerticalAlign)
+	for _, child := range c.Children {
+		cx := alignItem(contentX, contentW, child.Bounds.W, c.HorizontalAlign)
 		pass2Position(child, cx, cy)
-		cy += child.Bounds.H
+		cy += child.Bounds.H + gap
 	}
 }
 
-func insetSize(size, padding float64) (offset, content float64) {
+func totalMainSize(children []*Container, gap float64, sizeOf func(*Container) float64) float64 {
+	if len(children) == 0 {
+		return 0
+	}
+	total := gap * float64(len(children)-1)
+	for _, child := range children {
+		total += sizeOf(child)
+	}
+	return total
+}
+
+func alignedStart(start, available, content float64, alignment Alignment) float64 {
+	switch alignment {
+	case AlignCenter:
+		return start + (available-content)/2
+	case AlignEnd:
+		return start + available - content
+	default:
+		return start
+	}
+}
+
+func alignItem(start, available, size float64, alignment Alignment) float64 {
+	return alignedStart(start, available, size, alignment)
+}
+
+func directionOf(c *Container) Direction {
+	if c.Direction == Row {
+		return Row
+	}
+	return Column
+}
+
+func gaps(c *Container) float64 {
+	if len(c.Children) < 2 {
+		return 0
+	}
+	return nonnegativeFinite(c.Gap) * float64(len(c.Children)-1)
+}
+
+func contentBox(c *Container, width, height float64) (x, y, contentW, contentH float64) {
+	insets := c.Insets
+	if insets == (Insets{}) {
+		insets = UniformInsets(c.Padding)
+	}
+	x, contentW = insetAxis(width, insets.Left, insets.Right)
+	y, contentH = insetAxis(height, insets.Top, insets.Bottom)
+	return x, y, contentW, contentH
+}
+
+// insetAxis keeps content non-negative. Oversized asymmetric insets are
+// reduced proportionally, preserving their relative placement.
+func insetAxis(size, start, end float64) (offset, content float64) {
 	if size <= 0 {
 		return 0, 0
 	}
-	padding = max(0, min(padding, size/2))
-	return padding, size - padding*2
+	start = nonnegativeFinite(start)
+	end = nonnegativeFinite(end)
+	if total := start + end; total > size {
+		scale := size / total
+		start *= scale
+		end *= scale
+	}
+	return start, max(0, size-start-end)
+}
+
+func insetSize(size, padding float64) (offset, content float64) {
+	return insetAxis(size, padding, padding)
 }
