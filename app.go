@@ -17,6 +17,9 @@ var ErrWindowNotInitialized = errors.New("goak: window is not initialized")
 // the application window and its renderer have already been created.
 var ErrRendererAlreadyInitialized = errors.New("goak: renderer must be selected before window initialization")
 
+// ErrNilUI is returned when a retained-only run has no UI.
+var ErrNilUI = errors.New("goak: retained UI is nil")
+
 // App is the application API. Create with NewApp, call InitWindow, then Run(ui).
 type App struct {
 	win      *Window
@@ -107,10 +110,11 @@ func (a *App) SetAutoDPI(enabled bool) {
 }
 
 // SetWindowScale sets the runtime window scale multiplier.
-func (a *App) SetWindowScale(scale float64) {
-	if a.win != nil {
-		a.win.SetWindowScale(scale)
+func (a *App) SetWindowScale(scale float64) error {
+	if a.win == nil {
+		return ErrWindowNotInitialized
 	}
+	return a.win.SetWindowScale(scale)
 }
 
 // WindowScale returns the current runtime window scale multiplier.
@@ -138,20 +142,34 @@ func (a *App) SetWindowIcon(icon image.Image) error {
 
 // Run runs the execution loop with the given UI; the window event loop blocks
 // until the window is closed.
-func (a *App) Run(ui *components.UI) {
-	if a.win == nil || ui == nil {
-		return
+func (a *App) Run(ui *components.UI) error {
+	if a.win == nil {
+		return ErrWindowNotInitialized
+	}
+	if ui == nil {
+		return ErrNilUI
 	}
 	a.win.attachUI(ui)
 	a.win.setBeforeFrame(a.drainDispatch)
-	a.win.Run()
+	err := a.win.Run()
 	a.stopDispatch()
+	return err
 }
 
 // RunScene runs a custom interface through the same SDL lifecycle as retained
 // widget UIs. A scene can use the normalized event API and only drop down to
 // the SDL renderer for application-specific drawing.
 func (a *App) RunScene(scene Scene) error {
+	return a.runScene(scene, nil)
+}
+
+// RunSceneWithUI runs a custom scene with a retained UI drawn above it. The UI
+// receives input first using the scene context's UIInputPolicy.
+func (a *App) RunSceneWithUI(scene Scene, ui *components.UI) error {
+	return a.runScene(scene, ui)
+}
+
+func (a *App) runScene(scene Scene, ui *components.UI) error {
 	if a.win == nil {
 		return ErrWindowNotInitialized
 	}
@@ -159,24 +177,27 @@ func (a *App) RunScene(scene Scene) error {
 		return ErrNilScene
 	}
 	ctx := &SceneContext{window: a.win}
+	a.win.attachScene(scene, ctx)
+	ctx.SetUI(ui)
 	if initializer, ok := scene.(SceneInitializer); ok {
 		if err := initializer.Init(ctx); err != nil {
 			if closer, exists := scene.(SceneCloser); exists {
 				closer.Close()
 			}
 			ctx.close()
+			a.win.detachScene()
 			return err
 		}
 	}
-	a.win.attachScene(scene, ctx)
 	a.win.setBeforeFrame(a.drainDispatch)
-	a.win.Run()
+	runErr := a.win.Run()
 	if closer, ok := scene.(SceneCloser); ok {
 		closer.Close()
 	}
 	ctx.close()
+	a.win.detachScene()
 	a.stopDispatch()
-	return nil
+	return runErr
 }
 
 // Destroy closes the window and frees resources.

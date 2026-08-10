@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/tacf/goak/components"
+
 	"github.com/Zyko0/go-sdl3/sdl"
 )
 
@@ -12,11 +14,29 @@ type lifecycleScene struct {
 	initErr     error
 	initialized bool
 	closed      bool
+	ui          *components.UI
 }
 
 func (scene *lifecycleScene) Init(ctx *SceneContext) error {
 	scene.initialized = ctx != nil
+	scene.ui = ctx.UI()
 	return scene.initErr
+}
+
+func TestRunSceneWithUIAttachesBeforeInitializationAndCleansUp(t *testing.T) {
+	app := NewApp()
+	app.win = &Window{}
+	ui := components.NewUI()
+	scene := &lifecycleScene{}
+	if err := app.RunSceneWithUI(scene, ui); !errors.Is(err, ErrWindowNotInitialized) {
+		t.Fatalf("RunSceneWithUI error = %v, want %v", err, ErrWindowNotInitialized)
+	}
+	if scene.ui != ui {
+		t.Fatal("scene initializer did not receive the configured retained UI")
+	}
+	if app.win.ui != nil || app.win.scene != nil || app.win.sceneCtx != nil {
+		t.Fatal("scene UI or lifecycle references remained attached after RunSceneWithUI")
+	}
 }
 
 func (*lifecycleScene) Draw(*SceneContext) {}
@@ -27,8 +47,8 @@ func TestRunSceneCallsOptionalLifecycle(t *testing.T) {
 	app := NewApp()
 	app.win = &Window{}
 	scene := &lifecycleScene{}
-	if err := app.RunScene(scene); err != nil {
-		t.Fatal(err)
+	if err := app.RunScene(scene); !errors.Is(err, ErrWindowNotInitialized) {
+		t.Fatalf("RunScene error = %v, want %v", err, ErrWindowNotInitialized)
 	}
 	if !scene.initialized || !scene.closed {
 		t.Fatalf("scene lifecycle = initialized %v, closed %v", scene.initialized, scene.closed)

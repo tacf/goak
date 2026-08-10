@@ -7,10 +7,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tacf/goak/components"
+	"github.com/tacf/goak/layout"
+
 	"github.com/Zyko0/go-sdl3/sdl"
 )
 
-var ErrNilScene = errors.New("goak: scene is nil")
+var (
+	ErrNilScene             = errors.New("goak: scene is nil")
+	ErrInvalidUIInputPolicy = errors.New("goak: invalid retained UI input policy")
+)
 
 // Scene is the minimal interface for a custom interface hosted by Goak.
 // Drawing runs on the SDL thread and the framework presents the completed
@@ -91,6 +97,20 @@ const (
 	CursorResizeNS
 )
 
+// UIInputPolicy controls how a retained UI attached to a scene participates
+// in input routing. The retained UI is always drawn after the scene.
+type UIInputPolicy uint8
+
+const (
+	// UIInputOverlay gives retained controls the first opportunity to handle an
+	// event, then forwards unhandled events to the scene.
+	UIInputOverlay UIInputPolicy = iota
+	// UIInputModal routes non-quit input exclusively to the retained UI.
+	UIInputModal
+	// UIInputPassthrough draws the retained UI without routing input to it.
+	UIInputPassthrough
+)
+
 // SceneContext exposes window services that custom interfaces need without
 // making them own SDL initialization, shutdown, event polling, or presenting.
 // Renderer is an intentional escape hatch for advanced drawing layers.
@@ -98,6 +118,7 @@ type SceneContext struct {
 	window        *Window
 	cursors       map[Cursor]*sdl.Cursor
 	currentCursor Cursor
+	uiInputPolicy UIInputPolicy
 }
 
 func (ctx *SceneContext) Renderer() *sdl.Renderer {
@@ -160,17 +181,137 @@ func (ctx *SceneContext) SetTextInput(enabled bool) error {
 	if ctx == nil || ctx.window == nil || ctx.window.handle == nil {
 		return ErrWindowNotInitialized
 	}
-	if enabled {
-		return ctx.window.handle.StartTextInput()
+	ctx.window.sceneTextInput = enabled
+	return ctx.window.syncTextInput()
+}
+
+// SetUI attaches a retained UI to the scene. It is laid out each frame, drawn
+// after the scene, and routed according to UIInputPolicy.
+func (ctx *SceneContext) SetUI(ui *components.UI) {
+	if ctx == nil || ctx.window == nil {
+		return
 	}
-	return ctx.window.handle.StopTextInput()
+	ctx.window.setUI(ui)
+}
+
+// ClearUI detaches the scene's retained UI and releases renderer resources it
+// created. The UI value can be attached again later.
+func (ctx *SceneContext) ClearUI() {
+	if ctx == nil || ctx.window == nil {
+		return
+	}
+	ctx.window.setUI(nil)
+}
+
+// UI returns the retained UI currently attached to the scene, if any.
+func (ctx *SceneContext) UI() *components.UI {
+	if ctx == nil || ctx.window == nil {
+		return nil
+	}
+	return ctx.window.ui
+}
+
+// OpenContextMenu opens a menu registered with the attached retained UI. The
+// coordinates use the same renderer-pixel space as Scene mouse events; Goak
+// converts them to UI space, clamps the menu to the viewport, and closes any
+// other popup first. It reports whether the menu belongs to the attached UI.
+func (ctx *SceneContext) OpenContextMenu(menu *components.ContextMenu, x, y float32) bool {
+	if ctx == nil || ctx.window == nil || ctx.window.ui == nil || menu == nil {
+		return false
+	}
+	found := false
+	for _, candidate := range ctx.window.ui.ContextMenus() {
+		if candidate == menu {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	ctx.window.closePopups()
+	uiX, uiY := ctx.UIPoint(x, y)
+	menu.OpenAt(uiX, uiY, ctx.UIViewport())
+	return true
+}
+
+// CloseUIPopups closes retained context menus, menu-bar menus, and dropdowns
+// attached to the scene.
+func (ctx *SceneContext) CloseUIPopups() {
+	if ctx != nil && ctx.window != nil {
+		ctx.window.closePopups()
+	}
+}
+
+// SetUIInputPolicy changes how the attached retained UI receives input.
+func (ctx *SceneContext) SetUIInputPolicy(policy UIInputPolicy) error {
+	if ctx == nil {
+		return ErrWindowNotInitialized
+	}
+	switch policy {
+	case UIInputOverlay, UIInputModal, UIInputPassthrough:
+		ctx.uiInputPolicy = policy
+	default:
+		return ErrInvalidUIInputPolicy
+	}
+	if ctx.window != nil && ctx.uiInputPolicy == UIInputPassthrough {
+		ctx.window.reconcileUIInputState()
+	}
+	return nil
+}
+
+// UIInputPolicy returns the retained UI input policy. The default is
+// UIInputOverlay.
+func (ctx *SceneContext) UIInputPolicy() UIInputPolicy {
+	if ctx == nil {
+		return UIInputOverlay
+	}
+	return ctx.uiInputPolicy
+}
+
+// UIScale returns the logical-to-renderer scale used by the attached retained
+// UI. It includes root, window, and optional automatic DPI scaling.
+func (ctx *SceneContext) UIScale() float32 {
+	if ctx == nil || ctx.window == nil {
+		return 1
+	}
+	return float32(ctx.window.renderScale())
+}
+
+// UIViewport returns the retained UI's logical viewport.
+func (ctx *SceneContext) UIViewport() layout.Rect {
+	if ctx == nil || ctx.window == nil {
+		return layout.Rect{}
+	}
+	width, height := ctx.window.outputSize()
+	scale := ctx.window.renderScale()
+	return layout.Rect{W: float64(width) / scale, H: float64(height) / scale}
+}
+
+// UIPoint converts renderer-pixel scene coordinates to retained UI logical
+// coordinates. This is useful when a scene opens a retained popup in response
+// to an event it handled itself.
+func (ctx *SceneContext) UIPoint(x, y float32) (float64, float64) {
+	if ctx == nil || ctx.window == nil {
+		return float64(x), float64(y)
+	}
+	scale := ctx.window.renderScale()
+	return float64(x) / scale, float64(y) / scale
 }
 
 func (ctx *SceneContext) CaptureMouse(capture bool) error {
 	if ctx == nil || ctx.window == nil {
 		return ErrWindowNotInitialized
 	}
-	return sdl.CaptureMouse(capture)
+	return ctx.window.setSceneMouseCapture(capture)
+}
+
+// UIFontError reports the current retained font configuration failure, if any.
+func (ctx *SceneContext) UIFontError() error {
+	if ctx == nil || ctx.window == nil {
+		return nil
+	}
+	return ctx.window.UIFontError()
 }
 
 func (ctx *SceneContext) ClipboardText() (string, error) {
@@ -214,6 +355,13 @@ func (ctx *SceneContext) Quit() {
 }
 
 func (ctx *SceneContext) close() {
+	if ctx.window != nil {
+		ctx.window.sceneTextInput = false
+		ctx.window.sceneMouseCapture = false
+		ctx.window.setUI(nil)
+		_ = ctx.window.syncTextInput()
+		_ = ctx.window.syncMouseCapture()
+	}
 	for _, cursor := range ctx.cursors {
 		cursor.Destroy()
 	}

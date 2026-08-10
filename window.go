@@ -1,6 +1,7 @@
 package goak
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/Zyko0/go-sdl3/sdl"
 	"github.com/Zyko0/go-sdl3/ttf"
 )
+
+var ErrInvalidWindowScale = errors.New("goak: window scale must be finite and greater than zero")
 
 type Window struct {
 	title                string
@@ -31,17 +34,29 @@ type Window struct {
 	sceneCtx    *SceneContext
 	beforeFrame func()
 
-	handle       *sdl.Window
-	renderer     *sdl.Renderer
-	rendererName string
-	font         *rendering.Font
-	fontScale    float64
-	mouseX       float64
-	mouseY       float64
-	focusedInput *components.TextInput
-	focusedArea  *components.TextArea
-	running      bool
-	destroyed    bool
+	handle             *sdl.Window
+	renderer           *sdl.Renderer
+	rendererName       string
+	font               *rendering.Font
+	fontAttempted      bool
+	fontAttemptScale   float64
+	fontAttemptSize    float32
+	fontAttemptRev     uint64
+	fontErr            error
+	openFont           func(*sdl.Renderer, []byte, float32, float32) (*rendering.Font, error)
+	mouseX             float64
+	mouseY             float64
+	focusedInput       *components.TextInput
+	focusedArea        *components.TextArea
+	uiMouseCapture     bool
+	sceneMouseCapture  bool
+	mouseCaptureActive bool
+	captureMouse       func(bool) error
+	uiPointerPress     uint64
+	sceneTextInput     bool
+	textInputActive    bool
+	running            bool
+	destroyed          bool
 
 	unloadSDL func()
 	unloadTTF func()
@@ -166,7 +181,6 @@ func createWindow(cfg Config) (*Window, error) {
 		renderer:     renderer,
 		rendererName: rendererName,
 		font:         font,
-		fontScale:    fontScale,
 		unloadSDL:    unloadSDL,
 		unloadTTF:    unloadTTF,
 	}, nil
@@ -180,15 +194,98 @@ func (win *Window) RendererName() string {
 	return win.rendererName
 }
 
+// UIFontError reports the most recent retained-font configuration failure.
+// An unchanged failed configuration is attempted only once.
+func (win *Window) UIFontError() error {
+	if win == nil {
+		return nil
+	}
+	return win.fontErr
+}
+
+// resetRendererState establishes the host contract between custom Scene
+// drawing and retained drawing. A Scene may freely change renderer state
+// during Draw; Goak restores the window target and coordinate system before
+// drawing the next layer.
+func (win *Window) resetRendererState(scale float32) error {
+	if win == nil || win.renderer == nil {
+		return ErrWindowNotInitialized
+	}
+	return resetRendererStateOn(win.renderer, scale)
+}
+
+type rendererStateSetter interface {
+	SetRenderTarget(*sdl.Texture) error
+	SetLogicalPresentation(int32, int32, sdl.RendererLogicalPresentation) error
+	SetViewport(*sdl.Rect) error
+	SetClipRect(*sdl.Rect) error
+	SetScale(float32, float32) error
+	SetColorScale(float32) error
+	SetDrawBlendMode(sdl.BlendMode) error
+}
+
+func resetRendererStateOn(renderer rendererStateSetter, scale float32) error {
+	return errors.Join(
+		renderer.SetRenderTarget(nil),
+		renderer.SetLogicalPresentation(0, 0, sdl.LOGICAL_PRESENTATION_DISABLED),
+		renderer.SetViewport(nil),
+		renderer.SetClipRect(nil),
+		renderer.SetScale(scale, scale),
+		renderer.SetColorScale(1),
+		renderer.SetDrawBlendMode(sdl.BLENDMODE_BLEND),
+	)
+}
+
 func (win *Window) attachUI(ui *components.UI) {
-	win.ui = ui
+	win.uiPointerPress = 0
+	win.setUI(ui)
 	win.scene = nil
 	win.sceneCtx = nil
 }
 
 func (win *Window) attachScene(scene Scene, ctx *SceneContext) {
+	win.uiPointerPress = 0
+	win.setUI(nil)
+	win.sceneTextInput = false
+	_ = win.syncTextInput()
 	win.scene = scene
 	win.sceneCtx = ctx
+}
+
+func (win *Window) detachScene() {
+	win.uiPointerPress = 0
+	win.sceneTextInput = false
+	win.sceneMouseCapture = false
+	_ = win.syncTextInput()
+	_ = win.syncMouseCapture()
+	win.scene = nil
+	win.sceneCtx = nil
+}
+
+func (win *Window) setUI(ui *components.UI) {
+	if win.ui == ui {
+		return
+	}
+	win.releaseUI()
+	win.ui = ui
+	win.fontAttempted = false
+	win.fontErr = nil
+}
+
+func (win *Window) releaseUI() {
+	win.clearTextFocus()
+	win.releaseUIMouseCapture()
+	if win.ui != nil {
+		win.closePopups()
+		for index := 0; index < win.ui.ComponentCount(); index++ {
+			switch component := win.ui.Component(index).(type) {
+			case *components.Slider:
+				component.StopDrag()
+			case *components.Image:
+				component.Close()
+			}
+		}
+	}
 	win.ui = nil
 }
 
@@ -209,19 +306,23 @@ func (win *Window) AutoDPI() bool {
 }
 
 // SetWindowScale sets additional runtime scale applied on top of root scale.
-// Values <= 0 are ignored.
-func (win *Window) SetWindowScale(scale float64) {
-	if scale <= 0 {
-		return
+// Non-positive and non-finite values return ErrInvalidWindowScale.
+func (win *Window) SetWindowScale(scale float64) error {
+	if scale <= 0 || math.IsNaN(scale) || math.IsInf(scale, 0) {
+		return ErrInvalidWindowScale
 	}
 	next := scale
 	if next == win.windowScale {
-		return
+		return nil
 	}
 	win.windowScale = next
 	if win.onWindowScaleChanged != nil {
 		win.onWindowScaleChanged(next)
 	}
+	if win.ui != nil {
+		win.ui.InvalidateLayout()
+	}
+	return nil
 }
 
 func (win *Window) WindowScale() float64 {
@@ -250,11 +351,16 @@ func (win *Window) PointWithinBounds(x, y float64, r layout.Rect) bool {
 }
 
 // Run processes SDL events and renders frames until the window is closed.
-func (win *Window) Run() {
+func (win *Window) Run() error {
 	if win == nil || win.destroyed || win.handle == nil || win.renderer == nil {
-		return
+		return ErrWindowNotInitialized
 	}
 	win.running = true
+	// Establish retained bounds before the first event can target the UI.
+	win.updateUI()
+	if win.ui != nil && win.fontErr != nil {
+		return win.fontErr
+	}
 	var event sdl.Event
 	for win.running {
 		for sdl.PollEvent(&event) {
@@ -267,13 +373,19 @@ func (win *Window) Run() {
 			if updater, ok := win.scene.(SceneUpdater); ok {
 				updater.Update()
 			}
+			// Scene updates may mutate or replace the retained tree.
+			win.updateUI()
+			_ = win.resetRendererState(1)
 			win.scene.Draw(win.sceneCtx)
+			win.drawUI(false)
 			_ = win.renderer.Present()
 		} else {
 			win.updateUI()
-			win.drawUI()
+			win.drawUI(true)
+			_ = win.renderer.Present()
 		}
 	}
+	return nil
 }
 
 func (win *Window) setBeforeFrame(beforeFrame func()) {
@@ -287,15 +399,14 @@ func (win *Window) Destroy() {
 	}
 	win.destroyed = true
 	win.running = false
+	win.sceneMouseCapture = false
+	win.uiMouseCapture = false
+	_ = win.syncMouseCapture()
 	if win.font != nil {
 		win.font.Close()
 		win.font = nil
 	}
-	if win.ui != nil {
-		for _, component := range win.ui.Images() {
-			component.Close()
-		}
-	}
+	win.releaseUI()
 	if win.renderer != nil {
 		win.renderer.Destroy()
 		win.renderer = nil
@@ -317,56 +428,119 @@ func (win *Window) Destroy() {
 }
 
 func (win *Window) handleEvent(event *sdl.Event) {
-	if win.scene != nil {
-		if translated, ok := win.sceneEvent(event); ok {
-			handled := false
-			if handler, exists := win.scene.(SceneEventHandler); exists {
-				handled = handler.HandleEvent(translated)
-			}
-			if translated.Type == EventQuit && !handled {
-				win.running = false
-			}
+	if win.scene == nil {
+		if event.Type == sdl.EVENT_QUIT {
+			win.running = false
+			return
+		}
+		if win.ui != nil && (!win.ui.Visible() || !win.ui.Interactive()) {
+			win.reconcileUIInputState()
+		}
+		if win.ui != nil && win.ui.Visible() && win.ui.Interactive() {
+			win.handleUIEvent(event, true)
+		} else {
+			win.handleInactiveUIPointerEvent(event)
 		}
 		return
 	}
-	switch event.Type {
-	case sdl.EVENT_QUIT:
+
+	policy := UIInputOverlay
+	if win.sceneCtx != nil {
+		policy = win.sceneCtx.UIInputPolicy()
+	}
+	uiAcceptsInput, uiBlocksScene := win.uiInputRouting(policy)
+	if win.ui != nil && !uiAcceptsInput {
+		win.reconcileUIInputState()
+	}
+	uiHandled := false
+	if uiAcceptsInput {
+		uiHandled = win.handleUIEvent(event, false)
+	} else {
+		uiHandled = win.handleInactiveUIPointerEvent(event)
+	}
+
+	translated, ok := win.sceneEvent(event)
+	if !ok {
+		return
+	}
+	win.dispatchSceneEvent(translated, uiHandled, uiBlocksScene)
+}
+
+func (win *Window) uiInputRouting(policy UIInputPolicy) (acceptsInput, blocksScene bool) {
+	visible := win.ui != nil && win.ui.Visible()
+	return visible && win.ui.Interactive() && policy != UIInputPassthrough,
+		visible && policy == UIInputModal
+}
+
+func (win *Window) dispatchSceneEvent(
+	event Event,
+	uiHandled bool,
+	uiBlocksScene bool,
+) {
+	if event.Type != EventQuit && (uiHandled || uiBlocksScene) {
+		return
+	}
+	handled := false
+	if handler, exists := win.scene.(SceneEventHandler); exists {
+		handled = handler.HandleEvent(event)
+	}
+	if event.Type == EventQuit && !handled {
 		win.running = false
+	}
+}
+
+func (win *Window) handleUIEvent(event *sdl.Event, allowWindowShortcuts bool) bool {
+	if win.ui == nil || !win.ui.Visible() || !win.ui.Interactive() {
+		return false
+	}
+	switch event.Type {
 	case sdl.EVENT_KEY_DOWN:
 		key := event.KeyboardEvent()
 		if key == nil {
-			return
+			return false
+		}
+		binding := keyChord(key.Key, key.Mod)
+		if win.handlePopupKey(binding) {
+			return true
 		}
 		if win.focusedInput != nil && win.focusedInput.HandleKey(key.Key, key.Mod) {
-			return
+			return true
 		}
 		if win.focusedArea != nil && win.focusedArea.HandleKey(key.Key, key.Mod) {
-			return
+			return true
 		}
-		if key.Repeat {
-			return
+		if key.Repeat || !allowWindowShortcuts {
+			return false
 		}
 		switch key.Key {
 		case sdl.K_F12:
 			win.debugMode = !win.debugMode
+			return true
 		case sdl.K_EQUALS, sdl.K_PLUS, sdl.K_KP_PLUS:
 			if win.scaleHotkeys && key.Mod&sdl.KMOD_CTRL != 0 {
 				win.changeWindowScale(0.1)
+				return true
 			}
 		case sdl.K_MINUS, sdl.K_KP_MINUS:
 			if win.scaleHotkeys && key.Mod&sdl.KMOD_CTRL != 0 {
 				win.changeWindowScale(-0.1)
+				return true
 			}
 		}
 	case sdl.EVENT_TEXT_INPUT:
 		text := event.TextInputEvent()
 		if text == nil {
-			return
+			return false
+		}
+		if win.uiHasOpenPopup() {
+			return true
 		}
 		if win.focusedInput != nil {
 			win.focusedInput.HandleTextInput(text.Text)
+			return true
 		} else if win.focusedArea != nil {
 			win.focusedArea.HandleTextInput(text.Text)
+			return true
 		}
 	case sdl.EVENT_MOUSE_MOTION:
 		mouse := event.MouseMotionEvent()
@@ -374,44 +548,41 @@ func (win *Window) handleEvent(event *sdl.Event) {
 			win.mouseX = float64(mouse.X)
 			win.mouseY = float64(mouse.Y)
 		}
+		return win.uiMouseCapture || win.uiPointerPress != 0 || win.uiHasOpenPopup()
 	case sdl.EVENT_MOUSE_BUTTON_DOWN:
 		mouse := event.MouseButtonEvent()
 		if mouse == nil {
-			return
+			return false
 		}
 		win.mouseX = float64(mouse.X)
 		win.mouseY = float64(mouse.Y)
 		x, y := win.logicalMousePosition()
-		switch mouse.Button {
-		case uint8(sdl.BUTTON_LEFT):
-			win.mouseDown(x, y)
-		case uint8(sdl.BUTTON_RIGHT):
-			win.openContextMenu(x, y)
-		}
+		handled := win.mouseDown(mouseButton(mouse.Button), x, y)
+		win.setUIPointerPress(mouse.Button, handled)
+		return handled
 	case sdl.EVENT_MOUSE_BUTTON_UP:
 		mouse := event.MouseButtonEvent()
 		if mouse == nil {
-			return
+			return false
 		}
 		win.mouseX = float64(mouse.X)
 		win.mouseY = float64(mouse.Y)
-		if mouse.Button == uint8(sdl.BUTTON_LEFT) && win.ui != nil {
-			_ = sdl.CaptureMouse(false)
-			for _, slider := range win.ui.Sliders() {
-				slider.StopDrag()
-			}
-		}
+		return win.finishUIPointerRelease(mouse.Button)
 	case sdl.EVENT_MOUSE_WHEEL:
 		wheel := event.MouseWheelEvent()
 		if wheel == nil || win.ui == nil {
-			return
+			return false
 		}
 		win.mouseX = float64(wheel.MouseX)
 		win.mouseY = float64(wheel.MouseY)
+		if win.handlePopupWheel(float64(wheel.Y)) {
+			return true
+		}
 		x, y := win.logicalMousePosition()
-		for index := len(win.ui.TextAreas()) - 1; index >= 0; index-- {
-			area := win.ui.TextAreas()[index]
-			if !rendering.PointWithinBounds(x, y, area.Bounds()) {
+		for index := win.ui.ComponentCount() - 1; index >= 0; index-- {
+			area, ok := win.ui.Component(index).(*components.TextArea)
+			if !ok || !win.ui.ComponentEnabled(area) ||
+				!rendering.PointWithinBounds(x, y, area.Bounds()) {
 				continue
 			}
 			wheelX := float64(wheel.X)
@@ -420,9 +591,105 @@ func (win *Window) handleEvent(event *sdl.Event) {
 				wheelX, wheelY = wheelY, 0
 			}
 			area.ScrollWheel(wheelX, wheelY, win.font)
-			return
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func (win *Window) handleInactiveUIPointerEvent(event *sdl.Event) bool {
+	switch event.Type {
+	case sdl.EVENT_MOUSE_MOTION:
+		return win.uiPointerPress != 0
+	case sdl.EVENT_MOUSE_BUTTON_DOWN:
+		if mouse := event.MouseButtonEvent(); mouse != nil {
+			win.setUIPointerPress(mouse.Button, false)
+		}
+	case sdl.EVENT_MOUSE_BUTTON_UP:
+		if mouse := event.MouseButtonEvent(); mouse != nil {
+			return win.finishUIPointerRelease(mouse.Button)
 		}
 	}
+	return false
+}
+
+func pointerButtonBit(button uint8) uint64 {
+	if button >= 64 {
+		return 0
+	}
+	return uint64(1) << button
+}
+
+func (win *Window) setUIPointerPress(button uint8, handled bool) {
+	bit := pointerButtonBit(button)
+	if handled {
+		win.uiPointerPress |= bit
+		return
+	}
+	win.uiPointerPress &^= bit
+}
+
+func (win *Window) finishUIPointerRelease(button uint8) bool {
+	bit := pointerButtonBit(button)
+	handled := win.uiPointerPress&bit != 0
+	win.uiPointerPress &^= bit
+	if button != uint8(sdl.BUTTON_LEFT) || !win.uiMouseCapture {
+		return handled
+	}
+	win.releaseUIMouseCapture()
+	return true
+}
+
+func (win *Window) releaseUIMouseCapture() {
+	if !win.uiMouseCapture {
+		return
+	}
+	win.uiMouseCapture = false
+	_ = win.syncMouseCapture()
+	ui := win.ui
+	if ui != nil {
+		for index := 0; index < ui.ComponentCount(); index++ {
+			if slider, ok := ui.Component(index).(*components.Slider); ok {
+				slider.StopDrag()
+			}
+		}
+	}
+}
+
+func (win *Window) setSceneMouseCapture(capture bool) error {
+	if win == nil || win.handle == nil {
+		return ErrWindowNotInitialized
+	}
+	win.sceneMouseCapture = capture
+	return win.syncMouseCapture()
+}
+
+func (win *Window) setUIMouseCapture(capture bool) error {
+	if win == nil || win.handle == nil {
+		return ErrWindowNotInitialized
+	}
+	win.uiMouseCapture = capture
+	return win.syncMouseCapture()
+}
+
+func (win *Window) syncMouseCapture() error {
+	if win == nil {
+		return ErrWindowNotInitialized
+	}
+	desired := win.sceneMouseCapture || win.uiMouseCapture
+	if desired == win.mouseCaptureActive {
+		return nil
+	}
+	capture := win.captureMouse
+	if capture == nil {
+		capture = sdl.CaptureMouse
+	}
+	if err := capture(desired); err != nil {
+		return err
+	}
+	win.mouseCaptureActive = desired
+	return nil
 }
 
 func (win *Window) sceneEvent(event *sdl.Event) (Event, bool) {
@@ -508,181 +775,424 @@ func (win *Window) updateUI() {
 	}
 	outputW, outputH := win.outputSize()
 	scale := win.renderScale()
-	root := win.ui.Root()
-	for _, menu := range win.ui.MenuBars() {
-		menu.SyncWidth()
+	_ = win.ensureFont(scale, win.ui)
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		if menu, ok := win.ui.Component(index).(*components.MenuBar); ok {
+			menu.SyncWidth(win.font)
+		}
 	}
-	layout.Layout(root.Container(), float64(outputW)/scale, float64(outputH)/scale)
+	viewport := layout.Rect{W: float64(outputW) / scale, H: float64(outputH) / scale}
+	win.ui.Layout(viewport.W, viewport.H)
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		switch component := win.ui.Component(index).(type) {
+		case *components.MenuBar:
+			component.Place(viewport)
+		case *components.Dropdown:
+			component.Place(viewport)
+		}
+	}
+	if !win.ui.Visible() || !win.ui.Interactive() ||
+		win.sceneCtx != nil && win.sceneCtx.UIInputPolicy() == UIInputPassthrough {
+		win.reconcileUIInputState()
+		return
+	}
 
-	x, y := win.logicalMousePosition()
-	for _, menu := range win.ui.MenuBars() {
-		menu.OnMouseMove(x, y)
+	ui := win.ui
+	if win.focusedInput != nil && (!ui.Contains(win.focusedInput) || !ui.ComponentEnabled(win.focusedInput)) ||
+		win.focusedArea != nil && (!ui.Contains(win.focusedArea) || !ui.ComponentEnabled(win.focusedArea)) {
+		win.clearTextFocus()
 	}
-	for _, menu := range win.ui.ContextMenus() {
-		if menu.IsOpen() {
+	x, y := win.logicalMousePosition()
+	for index := ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := ui.ContextMenu(index)
+		if menu.IsOpen() && ui.ContextMenuEnabled(menu) {
 			menu.SetHovered(menu.HitTest(x, y))
 		}
 	}
-	for _, slider := range win.ui.Sliders() {
-		if slider.IsDragging() {
-			slider.UpdateValue(x)
+	for index := 0; index < ui.ComponentCount(); index++ {
+		component := ui.Component(index)
+		if !ui.ComponentEnabled(component) {
+			continue
 		}
-	}
-	for _, group := range win.ui.RadioGroups() {
-		group.SetHovered(group.HitTest(x, y))
-	}
-	for _, dropdown := range win.ui.Dropdowns() {
-		if dropdown.IsOpen() {
-			dropdown.SetHovered(dropdown.HitTestList(x, y))
+		switch component := component.(type) {
+		case *components.MenuBar:
+			component.OnMouseMove(x, y)
+		case *components.Slider:
+			if component.IsDragging() {
+				component.UpdateValue(x)
+				if win.ui != ui {
+					return
+				}
+			}
+		case *components.RadioGroup:
+			component.SetHovered(component.HitTest(x, y))
+		case *components.Dropdown:
+			if component.IsOpen() {
+				component.SetHovered(component.HitTestList(x, y))
+			}
 		}
 	}
 	win.updateHoveredElement(x, y)
 }
 
-func (win *Window) mouseDown(x, y float64) {
+func (win *Window) mouseDown(button MouseButton, x, y float64) bool {
 	if win.ui == nil {
-		return
+		return false
+	}
+	ui := win.ui
+	if win.popupMouseDown(button, x, y) {
+		return true
+	}
+	if button == MouseRight {
+		return win.openContextMenu(x, y)
+	}
+	if button != MouseLeft {
+		return false
 	}
 
-	for _, menu := range win.ui.ContextMenus() {
-		if !menu.IsOpen() {
+	for index := ui.ComponentCount() - 1; index >= 0; index-- {
+		component := ui.Component(index)
+		if !ui.ComponentEnabled(component) ||
+			!rendering.PointWithinBounds(x, y, component.Container().Bounds) {
 			continue
 		}
-		if index := menu.HitTest(x, y); index >= 0 {
-			menu.Click(index)
-			return
-		}
-		menu.Close()
-	}
-
-	for _, menu := range win.ui.MenuBars() {
-		if menu.OnMouseDown(x, y) {
-			return
-		}
-	}
-	for index := len(win.ui.TextInputs()) - 1; index >= 0; index-- {
-		input := win.ui.TextInputs()[index]
-		if rendering.PointWithinBounds(x, y, input.Bounds()) {
-			win.focusTextInput(input)
-			input.SetCursorAt(x, win.font)
-			return
-		}
-	}
-	for index := len(win.ui.TextAreas()) - 1; index >= 0; index-- {
-		area := win.ui.TextAreas()[index]
-		if rendering.PointWithinBounds(x, y, area.Bounds()) {
-			win.focusTextArea(area)
-			area.SetCursorAt(x, y, win.font)
-			return
+		switch component := component.(type) {
+		case *components.TextArea:
+			win.focusTextArea(component)
+			component.SetCursorAt(x, y, win.font)
+			return true
+		case *components.TextInput:
+			win.focusTextInput(component)
+			component.SetCursorAt(x, win.font)
+			return true
+		case *components.MenuBar:
+			win.clearTextFocus()
+			if component.OnMouseDown(x, y) {
+				if win.ui == ui {
+					win.closePopupsExceptMenuBar(component)
+				}
+				return true
+			}
+		case *components.Dropdown:
+			win.clearTextFocus()
+			win.closePopups()
+			if win.ui == ui {
+				component.Open()
+			}
+			return true
+		case *components.Slider:
+			win.clearTextFocus()
+			component.StartDrag()
+			if err := win.setUIMouseCapture(true); err != nil {
+				component.StopDrag()
+				return true
+			}
+			component.UpdateValue(x)
+			return true
+		case *components.RadioGroup:
+			win.clearTextFocus()
+			if option := component.HitTest(x, y); option >= 0 {
+				component.SetSelectedIndex(option)
+				return true
+			}
+		case *components.Checkbox:
+			win.clearTextFocus()
+			component.Toggle()
+			return true
+		case *components.Button:
+			win.clearTextFocus()
+			component.Click()
+			return true
 		}
 	}
 	win.clearTextFocus()
-	for i, button := range win.ui.Buttons() {
-		if rendering.PointWithinBounds(x, y, button.Bounds()) {
-			win.ui.ButtonClicked(i)
-			return
-		}
-	}
-	for _, checkbox := range win.ui.Checkboxes() {
-		if rendering.PointWithinBounds(x, y, checkbox.Bounds()) {
-			checkbox.Toggle()
-			return
-		}
-	}
-	for _, group := range win.ui.RadioGroups() {
-		if index := group.HitTest(x, y); index >= 0 {
-			group.SetSelectedIndex(index)
-			return
-		}
-	}
-	for _, slider := range win.ui.Sliders() {
-		if rendering.PointWithinBounds(x, y, slider.Bounds()) {
-			slider.StartDrag()
-			slider.UpdateValue(x)
-			_ = sdl.CaptureMouse(true)
-			return
-		}
-	}
-	for _, dropdown := range win.ui.Dropdowns() {
-		if dropdown.IsOpen() {
-			if index := dropdown.HitTestList(x, y); index >= 0 {
-				dropdown.SetSelectedIndex(index)
-				return
-			}
-			if !rendering.PointWithinBounds(x, y, dropdown.ListBounds()) {
-				dropdown.Close()
-				return
-			}
-		} else if rendering.PointWithinBounds(x, y, dropdown.Bounds()) {
-			dropdown.Open()
-			return
-		}
-	}
+	return false
 }
 
-func (win *Window) openContextMenu(x, y float64) {
+// popupMouseDown gives the active overlay stack first refusal and consumes
+// every pointer button while a popup is modal.
+func (win *Window) popupMouseDown(button MouseButton, x, y float64) bool {
+	if win.ui == nil || !win.uiHasOpenPopup() {
+		return false
+	}
+	if button != MouseLeft {
+		win.closePopups()
+		return true
+	}
+	ui := win.ui
+	for index := ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := ui.ContextMenu(index)
+		if !menu.IsOpen() || !ui.ContextMenuEnabled(menu) {
+			continue
+		}
+		if item := menu.HitTest(x, y); item >= 0 {
+			menu.Click(item)
+		} else {
+			menu.Close()
+		}
+		return true
+	}
+	for index := ui.ComponentCount() - 1; index >= 0; index-- {
+		component := ui.Component(index)
+		if !ui.ComponentEnabled(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.MenuBar:
+			if component.IsOpen() {
+				_ = component.OnMouseDown(x, y)
+				if win.ui == ui {
+					win.closePopupsExceptMenuBar(component)
+				}
+				return true
+			}
+		case *components.Dropdown:
+			if !component.IsOpen() {
+				continue
+			}
+			if item := component.HitTestList(x, y); item >= 0 {
+				component.SetSelectedIndex(item)
+			} else {
+				component.Close()
+			}
+			return true
+		}
+	}
+	win.closePopups()
+	return true
+}
+
+func (win *Window) handlePopupKey(binding string) bool {
+	if win.ui == nil {
+		return false
+	}
+	ui := win.ui
+	for index := ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := ui.ContextMenu(index)
+		if menu.IsOpen() && ui.ContextMenuEnabled(menu) {
+			_ = menu.HandleKey(binding)
+			return true
+		}
+	}
+	for index := ui.ComponentCount() - 1; index >= 0; index-- {
+		component := ui.Component(index)
+		if !ui.ComponentEnabled(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.MenuBar:
+			if component.IsOpen() {
+				_ = component.HandleKey(binding)
+				return true
+			}
+		case *components.Dropdown:
+			if component.IsOpen() {
+				_ = component.HandleKey(binding)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (win *Window) handlePopupWheel(y float64) bool {
+	if win.ui == nil {
+		return false
+	}
+	ui := win.ui
+	for index := ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := ui.ContextMenu(index)
+		if menu.IsOpen() && ui.ContextMenuEnabled(menu) {
+			menu.ScrollWheel(y)
+			return true
+		}
+	}
+	for index := ui.ComponentCount() - 1; index >= 0; index-- {
+		component := ui.Component(index)
+		if !ui.ComponentEnabled(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.MenuBar:
+			if component.IsOpen() {
+				component.ScrollWheel(y)
+				return true
+			}
+		case *components.Dropdown:
+			if component.IsOpen() {
+				component.ScrollWheel(y)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (win *Window) openContextMenu(x, y float64) bool {
+	// Custom scenes own application context. Their right-click first reaches
+	// the Scene, which can populate and open a retained menu through
+	// SceneContext.OpenContextMenu. Retained-only apps keep automatic opening.
+	if win.ui == nil || win.scene != nil {
+		return false
+	}
+	win.closePopups()
+	for index := win.ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := win.ui.ContextMenu(index)
+		if !menu.AutoOpen() || !win.ui.ContextMenuEnabled(menu) {
+			continue
+		}
+		outputW, outputH := win.outputSize()
+		scale := win.renderScale()
+		menu.OpenAt(x, y, layout.Rect{
+			W: float64(outputW) / scale,
+			H: float64(outputH) / scale,
+		})
+		return true
+	}
+	return false
+}
+
+func (win *Window) closePopups() {
 	if win.ui == nil {
 		return
 	}
-	menus := win.ui.ContextMenus()
-	for _, menu := range menus {
-		menu.Close()
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		switch component := win.ui.Component(index).(type) {
+		case *components.MenuBar:
+			component.Close()
+		case *components.Dropdown:
+			component.Close()
+		}
 	}
-	if len(menus) > 0 {
-		menus[len(menus)-1].Open(x, y)
+	for index := 0; index < win.ui.ContextMenuCount(); index++ {
+		win.ui.ContextMenu(index).Close()
 	}
 }
 
-func (win *Window) drawUI() {
+func (win *Window) closePopupsExceptMenuBar(keep *components.MenuBar) {
+	if win.ui == nil {
+		return
+	}
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		switch component := win.ui.Component(index).(type) {
+		case *components.MenuBar:
+			if component != keep {
+				component.Close()
+			}
+		case *components.Dropdown:
+			component.Close()
+		}
+	}
+	for index := 0; index < win.ui.ContextMenuCount(); index++ {
+		win.ui.ContextMenu(index).Close()
+	}
+}
+
+func (win *Window) reconcileUIInputState() {
+	win.clearTextFocus()
+	win.closePopups()
+	win.releaseUIMouseCapture()
+}
+
+func (win *Window) uiHasOpenPopup() bool {
+	if win.ui == nil {
+		return false
+	}
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		component := win.ui.Component(index)
+		if !win.ui.ComponentVisible(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.MenuBar:
+			if component.IsOpen() {
+				return true
+			}
+		case *components.Dropdown:
+			if component.IsOpen() {
+				return true
+			}
+		}
+	}
+	for index := 0; index < win.ui.ContextMenuCount(); index++ {
+		menu := win.ui.ContextMenu(index)
+		if menu.IsOpen() && win.ui.ContextMenuVisible(menu) {
+			return true
+		}
+	}
+	return false
+}
+
+func (win *Window) drawUI(clearBackground bool) {
 	if win.ui == nil || win.renderer == nil {
 		return
 	}
 	scale := win.renderScale()
-	win.ensureFont(scale)
-	_ = win.renderer.SetScale(float32(scale), float32(scale))
+	_ = win.resetRendererState(float32(scale))
 	theme := win.ui.Theme()
-	bg := theme.Background
-	_ = win.renderer.SetDrawColor(bg.R, bg.G, bg.B, bg.A)
-	_ = win.renderer.Clear()
+	if clearBackground {
+		bg := theme.Background
+		_ = win.renderer.SetDrawColor(bg.R, bg.G, bg.B, bg.A)
+		_ = win.renderer.Clear()
+	}
+	if !win.ui.Visible() {
+		return
+	}
+	_ = win.ensureFont(scale, win.ui)
+	if win.font == nil {
+		return
+	}
 
-	for _, panel := range win.ui.Panels() {
-		panel.Draw(win.renderer, theme.Panel)
+	x, y := win.logicalMousePosition()
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		component := win.ui.Component(index)
+		if !win.ui.ComponentVisible(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.Panel:
+			component.Draw(win.renderer, theme.Panel)
+		case *components.Image:
+			component.Draw(win.renderer)
+		case *components.Label:
+			component.Draw(win.renderer, win.font, theme.Label)
+		case *components.Button:
+			component.Draw(win.renderer, win.font, theme.Button)
+		case *components.Checkbox:
+			component.Draw(win.renderer, win.font, theme.Checkbox,
+				win.ui.ComponentEnabled(component) && rendering.PointWithinBounds(x, y, component.Bounds()))
+		case *components.RadioGroup:
+			component.Draw(win.renderer, win.font, theme.RadioGroup)
+		case *components.Slider:
+			component.Draw(win.renderer, win.font, theme.Slider)
+		case *components.Dropdown:
+			component.DrawControl(win.renderer, win.font, theme.Dropdown)
+		case *components.TextInput:
+			component.Draw(win.renderer, win.font, theme.TextInput)
+		case *components.TextArea:
+			component.Draw(win.renderer, win.font, theme.TextArea)
+		case *components.MenuBar:
+			component.DrawBar(win.renderer, win.font, theme.MenuBar)
+		}
 	}
-	for _, component := range win.ui.Images() {
-		component.Draw(win.renderer)
+	// Popups are a separate overlay stack above the retained tree.
+	for index := 0; index < win.ui.ComponentCount(); index++ {
+		component := win.ui.Component(index)
+		if !win.ui.ComponentVisible(component) {
+			continue
+		}
+		switch component := component.(type) {
+		case *components.Dropdown:
+			component.DrawList(win.renderer, win.font, theme.Dropdown)
+		case *components.MenuBar:
+			component.DrawDropdown(win.renderer, win.font, theme.MenuBar)
+		}
 	}
-	for _, label := range win.ui.Labels() {
-		label.Draw(win.renderer, win.font, theme.Label)
-	}
-	for _, button := range win.ui.Buttons() {
-		button.Draw(win.renderer, win.font, theme.Button)
-	}
-	for _, checkbox := range win.ui.Checkboxes() {
-		checkbox.Draw(win.renderer, win.font, theme.Checkbox, false)
-	}
-	for _, group := range win.ui.RadioGroups() {
-		group.Draw(win.renderer, win.font, theme.RadioGroup)
-	}
-	for _, slider := range win.ui.Sliders() {
-		slider.Draw(win.renderer, win.font, theme.Slider)
-	}
-	for _, dropdown := range win.ui.Dropdowns() {
-		dropdown.Draw(win.renderer, win.font, theme.Dropdown)
-	}
-	for _, input := range win.ui.TextInputs() {
-		input.Draw(win.renderer, win.font, theme.TextInput)
-	}
-	for _, area := range win.ui.TextAreas() {
-		area.Draw(win.renderer, win.font, theme.TextArea)
-	}
-	for _, menu := range win.ui.MenuBars() {
-		menu.DrawBar(win.renderer, win.font, theme.MenuBar)
-	}
-	for _, menu := range win.ui.MenuBars() {
-		menu.DrawDropdown(win.renderer, win.font, theme.MenuBar)
-	}
-	for _, menu := range win.ui.ContextMenus() {
-		menu.Draw(win.renderer, win.font, theme.ContextMenu)
+	for index := 0; index < win.ui.ContextMenuCount(); index++ {
+		menu := win.ui.ContextMenu(index)
+		if win.ui.ContextMenuVisible(menu) {
+			menu.Draw(win.renderer, win.font, theme.ContextMenu)
+		}
 	}
 
 	if win.debugMode {
@@ -704,22 +1214,41 @@ func (win *Window) drawUI() {
 		y := max(margin, logicalH-labelH-margin)
 		rendering.DrawText(win.renderer, label, win.font, x, y, theme.Debug.Text)
 	}
-	_ = win.renderer.Present()
 }
 
-func (win *Window) ensureFont(scale float64) {
-	if win.renderer == nil || (win.font != nil && math.Abs(win.fontScale-scale) < 0.01) {
-		return
+func (win *Window) ensureFont(scale float64, ui *components.UI) error {
+	if ui == nil {
+		return nil
 	}
-	font, err := rendering.NewFont(win.renderer, 20, float32(scale))
+	size := float32(ui.FontSize())
+	revision := ui.FontRevision()
+	if win.renderer == nil {
+		return ErrWindowNotInitialized
+	}
+	if win.fontAttempted && math.Abs(win.fontAttemptScale-scale) < 0.01 &&
+		math.Abs(float64(win.fontAttemptSize-size)) < 0.01 &&
+		win.fontAttemptRev == revision {
+		return win.fontErr
+	}
+	win.fontAttempted = true
+	win.fontAttemptScale = scale
+	win.fontAttemptSize = size
+	win.fontAttemptRev = revision
+	openFont := win.openFont
+	if openFont == nil {
+		openFont = rendering.NewFontFromBytes
+	}
+	font, err := openFont(win.renderer, ui.FontData(), size, float32(scale))
 	if err != nil {
-		return
+		win.fontErr = fmt.Errorf("goak: could not open retained UI font: %w", err)
+		return win.fontErr
 	}
 	if win.font != nil {
 		win.font.Close()
 	}
 	win.font = font
-	win.fontScale = scale
+	win.fontErr = nil
+	return nil
 }
 
 func (win *Window) outputSize() (int32, int32) {
@@ -744,7 +1273,7 @@ func (win *Window) pixelDensity() float64 {
 func (win *Window) renderScale() float64 {
 	rootScale := 1.0
 	if win.ui != nil {
-		rootScale = win.ui.Root().Scale
+		rootScale = win.ui.Root().Scale()
 	}
 	scale := win.effectiveUIScale(rootScale)
 	if win.autoDPI {
@@ -768,11 +1297,11 @@ func (win *Window) changeWindowScale(delta float64) {
 		minScale = 0.5
 		maxScale = 4.0
 	)
-	win.SetWindowScale(math.Max(minScale, math.Min(maxScale, win.WindowScale()+delta)))
+	_ = win.SetWindowScale(math.Max(minScale, math.Min(maxScale, win.WindowScale()+delta)))
 }
 
 func normalizeScale(value float64) float64 {
-	if value <= 0 {
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
 		return 1
 	}
 	return value
@@ -785,9 +1314,7 @@ func (win *Window) focusTextInput(input *components.TextInput) {
 	win.clearTextFocus()
 	win.focusedInput = input
 	input.SetFocused(true)
-	if win.handle != nil {
-		_ = win.handle.StartTextInput()
-	}
+	_ = win.syncTextInput()
 }
 
 func (win *Window) focusTextArea(area *components.TextArea) {
@@ -797,13 +1324,10 @@ func (win *Window) focusTextArea(area *components.TextArea) {
 	win.clearTextFocus()
 	win.focusedArea = area
 	area.SetFocused(true)
-	if win.handle != nil {
-		_ = win.handle.StartTextInput()
-	}
+	_ = win.syncTextInput()
 }
 
 func (win *Window) clearTextFocus() {
-	hadFocus := win.focusedInput != nil || win.focusedArea != nil
 	if win.focusedInput != nil {
 		win.focusedInput.SetFocused(false)
 		win.focusedInput = nil
@@ -812,9 +1336,27 @@ func (win *Window) clearTextFocus() {
 		win.focusedArea.SetFocused(false)
 		win.focusedArea = nil
 	}
-	if hadFocus && win.handle != nil {
-		_ = win.handle.StopTextInput()
+	_ = win.syncTextInput()
+}
+
+func (win *Window) syncTextInput() error {
+	if win.handle == nil {
+		return ErrWindowNotInitialized
 	}
+	enabled := win.sceneTextInput || win.focusedInput != nil || win.focusedArea != nil
+	if enabled == win.textInputActive {
+		return nil
+	}
+	var err error
+	if enabled {
+		err = win.handle.StartTextInput()
+	} else {
+		err = win.handle.StopTextInput()
+	}
+	if err == nil {
+		win.textInputActive = enabled
+	}
+	return err
 }
 
 func (win *Window) updateHoveredElement(x, y float64) {
@@ -823,72 +1365,31 @@ func (win *Window) updateHoveredElement(x, y float64) {
 		return
 	}
 
-	menus := win.ui.MenuBars()
-	for i := len(menus) - 1; i >= 0; i-- {
-		menu := menus[i]
-		if menu.IsOpen() {
-			rects := menu.OpenSubItemRects()
-			for j := len(rects) - 1; j >= 0; j-- {
-				if rendering.PointWithinBounds(x, y, rects[j]) {
-					win.hoveredRect = rects[j]
-					win.hasHoveredRect = true
-					return
-				}
-			}
-		}
-	}
-	for i := len(menus) - 1; i >= 0; i-- {
-		menu := menus[i]
-		rects := menu.TopItemRects()
-		for j := len(rects) - 1; j >= 0; j-- {
-			if rendering.PointWithinBounds(x, y, rects[j]) {
-				win.hoveredRect = rects[j]
-				win.hasHoveredRect = true
-				return
-			}
-		}
-		if rendering.PointWithinBounds(x, y, menu.Bounds()) {
+	for index := win.ui.ContextMenuCount() - 1; index >= 0; index-- {
+		menu := win.ui.ContextMenu(index)
+		if menu.IsOpen() && rendering.PointWithinBounds(x, y, menu.Bounds()) {
 			win.hoveredRect = menu.Bounds()
 			win.hasHoveredRect = true
 			return
 		}
 	}
-	buttons := win.ui.Buttons()
-	for i := len(buttons) - 1; i >= 0; i-- {
-		if rendering.PointWithinBounds(x, y, buttons[i].Bounds()) {
-			win.hoveredRect = buttons[i].Bounds()
-			win.hasHoveredRect = true
-			return
+	for index := win.ui.ComponentCount() - 1; index >= 0; index-- {
+		component := win.ui.Component(index)
+		if !win.ui.ComponentVisible(component) {
+			continue
 		}
-	}
-	textAreas := win.ui.TextAreas()
-	for i := len(textAreas) - 1; i >= 0; i-- {
-		if rendering.PointWithinBounds(x, y, textAreas[i].Bounds()) {
-			win.hoveredRect = textAreas[i].Bounds()
-			win.hasHoveredRect = true
-			return
+		if menu, ok := component.(*components.MenuBar); ok && menu.IsOpen() {
+			for _, rect := range menu.OpenSubItemRects() {
+				if rendering.PointWithinBounds(x, y, rect) {
+					win.hoveredRect = rect
+					win.hasHoveredRect = true
+					return
+				}
+			}
 		}
-	}
-	textInputs := win.ui.TextInputs()
-	for i := len(textInputs) - 1; i >= 0; i-- {
-		if rendering.PointWithinBounds(x, y, textInputs[i].Bounds()) {
-			win.hoveredRect = textInputs[i].Bounds()
-			win.hasHoveredRect = true
-			return
-		}
-	}
-	images := win.ui.Images()
-	for i := len(images) - 1; i >= 0; i-- {
-		if rendering.PointWithinBounds(x, y, images[i].Bounds()) {
-			win.hoveredRect = images[i].Bounds()
-			win.hasHoveredRect = true
-			return
-		}
-	}
-	panels := win.ui.Panels()
-	for i := len(panels) - 1; i >= 0; i-- {
-		if rendering.PointWithinBounds(x, y, panels[i].Bounds()) {
-			win.hoveredRect = panels[i].Bounds()
+		bounds := component.Container().Bounds
+		if rendering.PointWithinBounds(x, y, bounds) {
+			win.hoveredRect = bounds
 			win.hasHoveredRect = true
 			return
 		}
