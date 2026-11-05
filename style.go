@@ -52,6 +52,10 @@ const (
 	ColTabActive
 	ColProgressBar
 	ColCaret
+	ColPlotLines
+	ColPlotLinesHovered
+	ColPlotHistogram
+	ColPlotHistogramHovered
 	ColCount
 )
 
@@ -150,6 +154,10 @@ func DarkStyle() Style {
 	c[ColTabActive] = colors.RGB(55, 80, 115)
 	c[ColProgressBar] = accent
 	c[ColCaret] = text
+	c[ColPlotLines] = colors.RGB(156, 170, 190)
+	c[ColPlotLinesHovered] = colors.RGB(255, 110, 90)
+	c[ColPlotHistogram] = colors.RGB(230, 180, 0)
+	c[ColPlotHistogramHovered] = colors.RGB(255, 150, 0)
 	return s
 }
 
@@ -195,5 +203,9 @@ func LightStyle() Style {
 	c[ColTabActive] = colors.RGB(170, 200, 240)
 	c[ColProgressBar] = accent
 	c[ColCaret] = text
+	c[ColPlotLines] = colors.RGB(90, 100, 120)
+	c[ColPlotLinesHovered] = colors.RGB(220, 70, 50)
+	c[ColPlotHistogram] = colors.RGB(200, 140, 0)
+	c[ColPlotHistogramHovered] = colors.RGB(230, 110, 0)
 	return s
 }
