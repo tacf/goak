@@ -1,196 +1,247 @@
+// Command demo shows the immediate-mode widget set.
 package main
 
 import (
+	"flag"
 	"fmt"
-	"image"
-	"image/color"
 	"log"
-	"math"
 
 	"github.com/tacf/goak"
-
+	"github.com/tacf/goak/backend/sdl3"
 	"github.com/tacf/goak/colors"
-	"github.com/tacf/goak/components"
-	"github.com/tacf/goak/layout"
+	"github.com/tacf/goak/internal/draw"
 )
 
-func main() {
-	app := goak.NewApp()
-	defer app.Destroy()
-
-	if err := app.SetRenderer(goak.RendererSoftware); err != nil {
-		log.Fatalf("could not select renderer: %v", err)
-	}
-	app.InitWindow("Goak Demo", 800, 650)
-	if err := app.SetWindowIcon(makeWindowIcon()); err != nil {
-		log.Printf("could not set window icon: %v", err)
-	}
-	app.SetAutoDPI(true)
-	app.SetScaleHotkeysEnabled(true)
-	ui := buildUI(app.RendererName())
-
-	app.Run(ui)
-}
-
-func buildUI(rendererName string) *components.UI {
-	ui := components.NewUI()
-	root := ui.Root()
-	root.SetAlignment(layout.AlignStart, layout.AlignStart)
-
-	mainMenu := root.CreateMenuBar(layout.StaticPx(28), components.MenuBarWidthFull)
-	mainMenu.
-		AddItem("File", nil).
-		AddSubItem("New", func() { fmt.Println("File -> New") }).
-		AddSubItem("Open", func() { fmt.Println("File -> Open") }).
-		AddSeparator().
-		AddSubItem("Exit", func() { fmt.Println("File -> Exit") })
-	mainMenu.
-		AddItem("Edit", nil).
-		AddSubItem("Cut", func() { fmt.Println("Edit -> Cut") }).
-		AddSubItem("Copy", func() { fmt.Println("Edit -> Copy") }).
-		AddSubItem("Paste", func() { fmt.Println("Edit -> Paste") })
-	mainMenu.AddItem("Help", func() { fmt.Println("Help clicked") })
-
-	container := root.CreatePanel(layout.PercentOf(100), layout.AutoSize())
-	container.SetBackground(colors.HexOr("#1e1e1e", colors.RGB(30, 30, 30)))
-	container.SetAlignment(layout.AlignCenter, layout.AlignCenter)
-	container.SetPadding(16)
-
-	buttonSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(100))
-	buttonSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
-	buttonSection.SetAlignment(layout.AlignStart, layout.AlignCenter)
-	buttonSection.SetPadding(12)
-
-	btn1 := buttonSection.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Click Me!")
-	btn1.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("Button 1 clicked") })
-
-	btn2 := buttonSection.CreateButton(layout.StaticPx(120), layout.StaticPx(32), "Press Me!")
-	btn2.SetOnClick(func(components.ButtonClickEvent) { fmt.Println("Button 2 clicked") })
-
-	checkboxSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(110))
-	checkboxSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
-	checkboxSection.SetAlignment(layout.AlignStart, layout.AlignStart)
-
-	cb1 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature A")
-	cb1.SetOnChanged(func(event components.CheckboxChangedEvent) {
-		fmt.Printf("Feature A: %v\n", event.Checked)
-	})
-
-	cb2 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature B")
-	cb2.SetOnChanged(func(event components.CheckboxChangedEvent) {
-		fmt.Printf("Feature B: %v\n", event.Checked)
-	})
-
-	cb3 := checkboxSection.CreateCheckbox(layout.StaticPx(200), layout.StaticPx(24), "Enable feature C")
-	cb3.SetChecked(true)
-	cb3.SetOnChanged(func(event components.CheckboxChangedEvent) {
-		fmt.Printf("Feature C: %v\n", event.Checked)
-	})
-
-	radioSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(120))
-	radioSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
-	radioSection.SetAlignment(layout.AlignStart, layout.AlignStart)
-
-	radioOptions := []components.RadioOption{
-		{Label: "Option 1", Value: "opt1"},
-		{Label: "Option 2", Value: "opt2"},
-		{Label: "Option 3", Value: "opt3"},
-		{Label: "Option 4", Value: "opt4"},
-	}
-	radio := radioSection.CreateRadioGroup(layout.StaticPx(200), layout.StaticPx(110), radioOptions)
-	radio.SetSelectedIndex(0)
-	radio.SetOnChanged(func(event components.RadioChangedEvent) {
-		fmt.Printf("Radio selected: %s (index %d)\n", event.Option.Value, event.Index)
-	})
-
-	sliderSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(80))
-	sliderSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
-	sliderSection.SetAlignment(layout.AlignStart, layout.AlignStart)
-
-	slider := sliderSection.CreateSlider(layout.StaticPx(400), layout.StaticPx(60), "Volume", 0, 100, 50)
-	slider.SetOnChanged(func(event components.SliderChangedEvent) {
-		fmt.Printf("Slider value: %.1f\n", event.Value)
-	})
-
-	dropdownSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(80))
-	dropdownSection.SetBackground(colors.HexOr("#2d2d2d", colors.RGB(45, 45, 45)))
-	dropdownSection.SetAlignment(layout.AlignStart, layout.AlignCenter)
-
-	dropdownOptions := []components.DropdownOption{
-		{Label: "Red", Value: "red"},
-		{Label: "Green", Value: "green"},
-		{Label: "Blue", Value: "blue"},
-		{Label: "Yellow", Value: "yellow"},
-		{Label: "Purple", Value: "purple"},
-	}
-	dropdown := dropdownSection.CreateDropdown(layout.StaticPx(200), layout.StaticPx(32), "Select Color", dropdownOptions)
-	dropdown.SetOnChanged(func(event components.DropdownChangedEvent) {
-		fmt.Printf("Dropdown selected: %s (index %d)\n", event.Option.Value, event.Index)
-	})
-
-	contextMenu := components.NewContextMenu([]components.ContextMenuItem{
-		components.NewContextMenuAction("Copy", func() { fmt.Println("Context: Copy") }),
-		components.NewContextMenuAction("Paste", func() { fmt.Println("Context: Paste") }),
-		components.NewContextMenuSeparator(),
-		components.NewContextMenuAction("Delete", func() { fmt.Println("Context: Delete") }),
-		components.NewContextMenuAction("Properties", func() { fmt.Println("Context: Properties") }),
-	})
-	container.AddContextMenu(contextMenu)
-
-	infoSection := container.CreatePanel(layout.PercentOf(95), layout.StaticPx(60))
-	infoSection.SetBackground(colors.HexOr("#252525", colors.RGB(37, 37, 37)))
-	infoSection.SetAlignment(layout.AlignCenter, layout.AlignCenter)
-
-	infoBtn := infoSection.CreateButton(layout.StaticPx(250), layout.StaticPx(36), "Demo")
-	infoBtn.SetOnClick(func(components.ButtonClickEvent) {
-		fmt.Println("This demo shows all available components:")
-		fmt.Println("- Buttons, Checkboxes, Radio Groups")
-		fmt.Println("- Sliders, Dropdowns, Context Menus")
-		fmt.Println("- Menu Bars with submenus")
-		fmt.Println("Try Ctrl+/- to scale the UI!")
-	})
-
-	statusBar := root.CreatePanel(layout.PercentOf(100), layout.StaticPx(30))
-	statusBar.SetBackground(colors.HexOr("#181818", colors.RGB(24, 24, 24)))
-	statusBar.SetAlignment(layout.AlignEnd, layout.AlignCenter)
-	statusBar.SetPadding(4)
-
-	rendererLabel := statusBar.CreateLabel(
-		layout.StaticPx(220),
-		layout.AutoSize(),
-		"Renderer: "+rendererName,
-	)
-	rendererLabel.SetAlignment(layout.AlignEnd, layout.AlignCenter)
-	rendererLabel.SetColor(colors.HexOr("#a8a8a8", colors.RGB(168, 168, 168)))
-
-	return ui
-}
-
-// makeWindowIcon creates a transparent 64x64 icon with a simple "G" mark.
-func makeWindowIcon() image.Image {
-	const size = 64
-	icon := image.NewRGBA(image.Rect(0, 0, size, size))
-	background := color.RGBA{R: 31, G: 36, B: 48, A: 255}
-	accent := color.RGBA{R: 74, G: 158, B: 255, A: 255}
-
-	for y := range size {
-		for x := range size {
-			// Rounded-square background.
-			cornerX := math.Max(12, math.Min(float64(x), 51))
-			cornerY := math.Max(12, math.Min(float64(y), 51))
-			if math.Hypot(float64(x)-cornerX, float64(y)-cornerY) <= 9 {
-				icon.SetRGBA(x, y, background)
-			}
-
-			// Circular G, opened on the right with a horizontal crossbar.
-			distance := math.Hypot(float64(x)-31.5, float64(y)-31.5)
-			onRing := distance >= 15 && distance <= 23
-			openRight := x >= 39 && y >= 25 && y <= 33
-			crossbar := x >= 31 && x <= 51 && y >= 31 && y <= 37
-			if (onRing && !openRight) || crossbar {
-				icon.SetRGBA(x, y, accent)
-			}
+// gradient makes an RGBA test texture.
+func gradient(n int) []byte {
+	px := make([]byte, n*n*4)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			o := (y*n + x) * 4
+			px[o], px[o+1], px[o+2], px[o+3] = byte(x*255/(n-1)), byte(y*255/(n-1)), 160, 255
 		}
 	}
-	return icon
+	return px
+}
+
+type state struct {
+	clicks   int
+	featA    bool
+	featB    bool
+	featC    bool
+	radio    int
+	volume   float32
+	steps    int
+	drag     float32
+	progress float32
+	color    int
+	name     string
+	password string
+	notes    string
+	list     int
+	showTab2 bool
+	light    bool
+	lastMenu string
+	imageTex draw.TextureID
+}
+
+func main() {
+	renderer := flag.String("renderer", "software", "renderer driver: software, gpu, auto or an SDL driver name")
+	flag.Parse()
+
+	b, err := sdl3.New(sdl3.Config{Title: "goak demo", Width: 960, Height: 720, Renderer: *renderer, Resizable: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer b.Close()
+	ctx, err := goak.NewContext(b, goak.Options{FontSize: 18})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s := &state{featC: true, volume: 50, steps: 3, drag: 1, name: "goak", showTab2: true,
+		notes: "Multiline text.\nSelect, copy and paste."}
+	if s.imageTex, err = b.NewTexture(64, 64, gradient(64)); err != nil {
+		log.Fatal(err)
+	}
+	colorsList := []string{"Red", "Green", "Blue", "Yellow", "Purple"}
+	files := []string{"README.md", "main.go", "go.mod", "scene.go", "window.go", "layout.go", "theme.go", "menu.go"}
+
+	var in goak.Input
+	for b.NewFrame(&in) {
+		ctx.NewFrame(&in, b.DisplaySize())
+		s.build(ctx, colorsList, files)
+		dd := ctx.Render()
+		_ = b.Clear(colors.RGB(24, 24, 28))
+		if err := b.Render(dd); err != nil {
+			log.Println("render:", err)
+		}
+		_ = b.Present()
+		if ctx.TextErr != nil {
+			log.Println("text:", ctx.TextErr)
+			ctx.TextErr = nil
+		}
+		if in.KeyPressed[goak.KeyEscape] && ctx.FocusID() == 0 && !ctx.AnyPopupOpen() {
+			break
+		}
+	}
+}
+
+func (s *state) build(c *goak.Context, colorsList, files []string) {
+	s.mainMenu(c)
+	s.widgetsWindow(c, colorsList, files)
+	s.textWindow(c)
+	s.tabsWindow(c)
+}
+
+func (s *state) mainMenu(c *goak.Context) {
+	if c.BeginMainMenuBar() {
+		if c.BeginMenu("File") {
+			if c.MenuItem("New", "Ctrl+N", false) {
+				s.lastMenu = "File -> New"
+			}
+			if c.BeginMenu("Open Recent") {
+				c.MenuItem("main.go", "", false)
+				c.MenuItem("README.md", "", false)
+				c.EndMenu()
+			}
+			if c.MenuItem("Exit", "", false) {
+				s.lastMenu = "File -> Exit"
+			}
+			c.EndMenu()
+		}
+		if c.BeginMenu("Edit") {
+			for _, n := range []string{"Cut", "Copy", "Paste"} {
+				if c.MenuItem(n, "", false) {
+					s.lastMenu = "Edit -> " + n
+				}
+			}
+			c.EndMenu()
+		}
+		if c.BeginMenu("View") {
+			if c.MenuItemCheck("Light theme", "", &s.light) {
+				if s.light {
+					c.Style = goak.LightStyle()
+				} else {
+					c.Style = goak.DarkStyle()
+				}
+			}
+			c.EndMenu()
+		}
+	}
+	c.EndMainMenuBar()
+}
+
+func (s *state) widgetsWindow(c *goak.Context, colorsList, files []string) {
+	c.SetNextWindowPos(goak.Vec2{X: 16, Y: 40}, goak.CondOnce)
+	c.SetNextWindowSize(goak.Vec2{X: 440, Y: 660}, goak.CondOnce)
+	if c.Begin("Widgets", nil, 0) {
+		if c.CollapsingHeader("Buttons") {
+			if c.Button("Click Me!") {
+				s.clicks++
+			}
+			c.SameLine(0, -1)
+			if c.Button("Press Me!") {
+				s.clicks += 10
+			}
+			if c.IsItemHovered() {
+				c.SetTooltip("Adds ten")
+			}
+			c.Textf("clicks %d, last menu: %s", s.clicks, s.lastMenu)
+			if c.ImageButton("imgbtn", s.imageTex, goak.Vec2{X: 24, Y: 24}, goak.Vec2{}, goak.Vec2{X: 1, Y: 1}, colors.Transparent, colors.White) {
+				s.clicks++
+			}
+			c.SameLine(0, -1)
+			c.Image(s.imageTex, goak.Vec2{X: 48, Y: 48}, goak.Vec2{}, goak.Vec2{X: 1, Y: 1}, colors.White)
+		}
+		if c.CollapsingHeader("Checkboxes and radios") {
+			c.Checkbox("Enable feature A", &s.featA)
+			c.Checkbox("Enable feature B", &s.featB)
+			c.Checkbox("Enable feature C", &s.featC)
+			c.Separator()
+			for i, n := range []string{"Option 1", "Option 2", "Option 3", "Option 4"} {
+				c.RadioButtonInt(n, &s.radio, i)
+				if i < 3 {
+					c.SameLine(0, -1)
+				}
+			}
+		}
+		if c.CollapsingHeader("Sliders and progress") {
+			c.SliderFloat("Volume", &s.volume, 0, 100, "%.1f")
+			c.SliderInt("Steps", &s.steps, 0, 10, "%d")
+			c.DragFloat("Drag", &s.drag, 0.05, 0, 10, "%.2f")
+			s.progress += 0.003
+			if s.progress > 1 {
+				s.progress = 0
+			}
+			c.ProgressBar(s.progress, goak.Vec2{X: -1}, fmt.Sprintf("%d%%", int(s.progress*100)))
+		}
+		if c.CollapsingHeader("Combo and list") {
+			c.Combo("Color", &s.color, colorsList)
+			c.ListBox("Files", &s.list, files, 5)
+		}
+		if c.CollapsingHeader("Tree") {
+			if c.TreeNode("Root") {
+				if c.TreeNode("Child A") {
+					c.BulletText("leaf one")
+					c.BulletText("leaf two")
+					c.TreePop()
+				}
+				if c.TreeNodeEx("Leaf node", goak.TreeLeaf) {
+					c.TreePop()
+				}
+				c.TreePop()
+			}
+		}
+		c.SeparatorText("Context menu")
+		c.Text("Right click this text")
+		if c.BeginPopupContextItem("ctx") {
+			for _, n := range []string{"Copy", "Paste", "Delete"} {
+				if c.MenuItem(n, "", false) {
+					s.lastMenu = "Context -> " + n
+				}
+			}
+			c.EndPopup()
+		}
+	}
+	c.End()
+}
+
+func (s *state) textWindow(c *goak.Context) {
+	c.SetNextWindowPos(goak.Vec2{X: 480, Y: 40}, goak.CondOnce)
+	c.SetNextWindowSize(goak.Vec2{X: 440, Y: 330}, goak.CondOnce)
+	if c.Begin("Text input", nil, 0) {
+		c.InputTextWithHint("Name", "type a name", &s.name, 0)
+		c.InputText("Password", &s.password, goak.InputPassword)
+		c.InputText("Read only", &s.name, goak.InputReadOnly)
+		c.InputTextMultiline("##notes", &s.notes, goak.Vec2{Y: 120}, 0)
+		c.Text("Double click the title bar to collapse.")
+	}
+	c.End()
+}
+
+func (s *state) tabsWindow(c *goak.Context) {
+	c.SetNextWindowPos(goak.Vec2{X: 480, Y: 390}, goak.CondOnce)
+	c.SetNextWindowSize(goak.Vec2{X: 440, Y: 220}, goak.CondOnce)
+	if c.Begin("Tabs", nil, goak.MenuBar) {
+		if c.BeginMenuBar() {
+			if c.BeginMenu("Tabs") {
+				c.MenuItemCheck("Show second tab", "", &s.showTab2)
+				c.EndMenu()
+			}
+			c.EndMenuBar()
+		}
+		if c.BeginTabBar("tabs") {
+			if c.BeginTabItem("First", nil) {
+				c.Text("First tab content")
+				c.EndTabItem()
+			}
+			if c.BeginTabItem("Second", &s.showTab2) {
+				c.Text("Closable second tab")
+				c.EndTabItem()
+			}
+			c.EndTabBar()
+		}
+	}
+	c.End()
 }
