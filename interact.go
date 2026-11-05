@@ -41,6 +41,9 @@ func (c *Context) ButtonBehavior(bounds Rect, id ID) (pressed, hovered, held boo
 // also click the focused item.
 func (c *Context) ButtonBehaviorEx(bounds Rect, id ID, fl ButtonFlags) ButtonState {
 	var s ButtonState
+	if c.disabled > 0 {
+		return s
+	}
 	in := c.In
 	left := MouseLeft
 	w := c.cur

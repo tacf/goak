@@ -41,6 +41,10 @@ type Context struct {
 	DisplaySize Vec2
 	Frame       int
 
+	disabled  int // BeginDisabled depth
+	groups    []groupState
+	styleCols []styleColor
+
 	platform Backend // set by NewContext
 	fontData []byte
 	fontPx   float64
@@ -113,7 +117,13 @@ func New(f TextRenderer, b Renderer) *Context {
 	}
 }
 
-func (c *Context) col(i Col) colors.Color { return c.Style.Colors[i] }
+func (c *Context) col(i Col) colors.Color {
+	col := c.Style.Colors[i]
+	if c.disabled > 0 {
+		col.A /= 2
+	}
+	return col
+}
 
 func (c *Context) lineHeight() float32 {
 	if c.Font == nil {

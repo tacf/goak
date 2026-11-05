@@ -7,13 +7,20 @@ import (
 	"github.com/tacf/goak/colors"
 )
 
+func (c *Context) fade(col colors.Color) colors.Color {
+	if c.disabled > 0 {
+		col.A /= 2
+	}
+	return col
+}
+
 // TextColored is Text in the given color.
 func (c *Context) TextColored(col colors.Color, s string) {
 	r := c.ItemAdd(c.TextSize(s))
 	if c.cur.skip {
 		return
 	}
-	c.DrawText(r.Min, s, col)
+	c.DrawText(r.Min, s, c.fade(col))
 }
 
 // TextDisabled is Text in the disabled text color.
