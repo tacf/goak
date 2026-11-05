@@ -4,7 +4,7 @@ An immediate-mode UI framework in pure Go. It uses SDL3 for windowing, input
 and rendering, with no cgo and no C toolchain. The same UI runs on SDL's
 software renderer or a GPU renderer by changing one option.
 
-The API follows the design of Dear ImGui (https://github.com/ocornut/imgui).
+The API follows the design of [Dear ImGui](https://github.com/ocornut/imgui).
 
 Features:
 
