@@ -153,6 +153,27 @@ func (s *state) widgetsWindow(c *goak.Context, colorsList, files []string) {
 			}
 			c.SameLine(0, -1)
 			c.Image(s.imageTex, goak.Vec2{X: 48, Y: 48}, goak.Vec2{}, goak.Vec2{X: 1, Y: 1}, colors.White)
+			c.SmallButton("Small")
+			c.SameLine(0, -1)
+			c.ArrowButton("left", goak.DirLeft)
+			c.SameLine(0, -1)
+			c.ArrowButton("right", goak.DirRight)
+			c.SameLine(0, -1)
+			c.ArrowButton("up", goak.DirUp)
+			c.SameLine(0, -1)
+			c.ArrowButton("down", goak.DirDown)
+			c.InvisibleButton("hit", goak.Vec2{X: 120, Y: 20})
+			c.SameLine(0, -1)
+			c.Text("Invisible button")
+		}
+		if c.CollapsingHeader("Text") {
+			c.Text("Plain text")
+			c.TextColored(colors.RGB(240, 180, 60), "Colored text")
+			c.TextDisabled("Disabled text")
+			c.Bullet()
+			c.SameLine(0, -1)
+			c.Text("Bullet")
+			c.TextWrapped("Wrapped text breaks at spaces to fit the space left in the window, so long sentences stay readable.")
 		}
 		if c.CollapsingHeader("Checkboxes and radios") {
 			c.Checkbox("Enable feature A", &s.featA)
