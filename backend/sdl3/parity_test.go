@@ -204,3 +204,60 @@ func TestFractionalSplitFillHasNoSeams(t *testing.T) {
 		}
 	}
 }
+
+// TestRoundedFillCornersAreCleanAtAnyScale renders a rounded fill and its border at several
+// pixel scales and fractional positions. The filled mask must be mirror
+// symmetric and each row one contiguous span, so no seam or notch remains.
+func TestRoundedFillCornersAreCleanAtAnyScale(t *testing.T) {
+	b := newSizedBackend(t, 320, 140)
+	const W, H = 320, 140
+	for _, sc := range []float32{1, 1.25, 1.5, 1.75, 2, 2.5} {
+		for _, off := range []float32{0, 0.13, 0.37, 0.5, 0.81} {
+			dl := goak.NewDrawList()
+			dl.Scale = sc
+			x0, y0 := 6+off, 5+off*1.7
+			dl.AddRectFilled(v2(x0, y0), v2(x0+97.3, y0+23.4), colors.RGB(200, 50, 50), 3)
+			dl.AddRect(v2(x0, y0), v2(x0+97.3, y0+23.4), colors.RGB(60, 200, 60), 3, 1)
+			if err := b.Clear(colors.RGB(0, 0, 0)); err != nil {
+				t.Fatal(err)
+			}
+			dd := &goak.DrawData{Lists: []*goak.DrawList{dl}, DisplaySize: v2(W/sc, H/sc), Scale: v2(sc, sc)}
+			if err := b.Render(dd); err != nil {
+				t.Fatal(err)
+			}
+			w, h, px, err := b.ReadPixels()
+			if err != nil {
+				t.Fatal(err)
+			}
+			on := func(x, y int) bool { return px[(y*w+x)*4] > 100 || px[(y*w+x)*4+1] > 100 }
+			minX, minY, maxX, maxY := w, h, -1, -1
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					if on(x, y) {
+						minX, minY, maxX, maxY = min(minX, x), min(minY, y), max(maxX, x), max(maxY, y)
+					}
+				}
+			}
+			if maxX < 0 {
+				t.Fatalf("scale %v offset %v: nothing drawn", sc, off)
+			}
+			for y := minY; y <= maxY; y++ {
+				first, last, n := -1, -1, 0
+				for x := minX; x <= maxX; x++ {
+					if on(x, y) {
+						if first < 0 {
+							first = x
+						}
+						last, n = x, n+1
+					}
+					if on(x, y) != on(minX+maxX-x, y) || on(x, y) != on(x, minY+maxY-y) {
+						t.Fatalf("scale %v offset %v: asymmetric corner at %d,%d", sc, off, x, y)
+					}
+				}
+				if n != last-first+1 {
+					t.Fatalf("scale %v offset %v: row %d has a gap", sc, off, y)
+				}
+			}
+		}
+	}
+}

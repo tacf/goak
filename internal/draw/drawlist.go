@@ -375,6 +375,10 @@ func (d *DrawList) AddRectFilledEx(min, max Vec2, c colors.Color, rounding float
 		d.fillRect(min, max, col)
 		return
 	}
+	if d.Scale > 0 {
+		d.fillRoundedRows(min, max, col, rounding, flags)
+		return
+	}
 	if (max.X-min.X)*(max.Y-min.Y) >= roundedSplitArea {
 		d.fillRounded(min, max, col, rounding, flags)
 		return
@@ -382,6 +386,111 @@ func (d *DrawList) AddRectFilledEx(min, max Vec2, c colors.Color, rounding float
 	d.PathClear()
 	d.PathRect(min, max, rounding, flags)
 	d.PathFillConvex(col)
+}
+
+// cornerInset is the number of uncovered pixels at the left of corner row i
+// of a corner with radius r, sampling pixel centers against the circle.
+func cornerInset(i, r int) int {
+	dy := float64(r) - float64(i) - 0.5
+	return max(0, int(math.Ceil(float64(r)-math.Sqrt(float64(r*r)-dy*dy)-0.5)))
+}
+
+// rowInsets returns the uncovered pixels at the left and right of row i of a
+// w by h pixel rect with corner radius r.
+func rowInsets(i, h, r int, flags Corner) (l, rt int) {
+	switch {
+	case i < r:
+		if flags&CornerTopLeft != 0 {
+			l = cornerInset(i, r)
+		}
+		if flags&CornerTopRight != 0 {
+			rt = cornerInset(i, r)
+		}
+	case i >= h-r:
+		if flags&CornerBottomLeft != 0 {
+			l = cornerInset(h-1-i, r)
+		}
+		if flags&CornerBottomRight != 0 {
+			rt = cornerInset(h-1-i, r)
+		}
+	}
+	return l, rt
+}
+
+// pixelRect returns the size of a rect in whole pixels and its corner radius
+// in pixels, clamped so opposite corners do not overlap.
+func (d *DrawList) pixelRect(lo, hi Vec2, rounding float32) (w, h, r int) {
+	sc := d.Scale
+	w = int(math.Round(float64((hi.X - lo.X) * sc)))
+	h = int(math.Round(float64((hi.Y - lo.Y) * sc)))
+	r = int(math.Round(float64(clampf(rounding, 0, min32(hi.X-lo.X, hi.Y-lo.Y)/2) * sc)))
+	return w, h, min(r, w/2, h/2)
+}
+
+// fillRoundedRows fills a rounded rect as whole pixel rows. Each row is one
+// axis aligned quad, so the backend draws it exactly and neighbouring rows
+// cannot leave seams or notches. It needs d.Scale and pixel aligned edges.
+func (d *DrawList) fillRoundedRows(lo, hi Vec2, col uint32, rounding float32, flags Corner) {
+	w, h, r := d.pixelRect(lo, hi, rounding)
+	if w <= 0 || h <= 0 {
+		return
+	}
+	d.rowRuns(lo, h, func(i int) [4]int {
+		l, rt := rowInsets(i, h, r, flags)
+		return [4]int{l, w - rt, 0, 0}
+	}, col)
+}
+
+// strokeRoundedRows draws a border of the given thickness inside a rounded
+// rect, as pixel row spans cut from the same corner shape the fill uses.
+func (d *DrawList) strokeRoundedRows(lo, hi Vec2, col uint32, rounding, thickness float32, flags Corner) {
+	w, h, r := d.pixelRect(lo, hi, rounding)
+	if w <= 0 || h <= 0 {
+		return
+	}
+	t := max(1, int(math.Round(float64(thickness*d.Scale))))
+	if 2*t >= min(w, h) {
+		d.fillRoundedRows(lo, hi, col, rounding, flags)
+		return
+	}
+	h2, r2 := h-2*t, max(r-t, 0)
+	d.rowRuns(lo, h, func(i int) [4]int {
+		ol, orr := rowInsets(i, h, r, flags)
+		if i < t || i >= h-t {
+			return [4]int{ol, w - orr, 0, 0}
+		}
+		il, ir := rowInsets(i-t, h2, r2, flags)
+		return [4]int{ol, w - orr, t + il, w - t - ir}
+	}, col)
+}
+
+// rowRuns emits quads for rows 0..h-1. spans(i) gives the covered pixel
+// range [a, b) of row i and, when its last two values are not both zero, an
+// inner gap [c, d) cut out of it. Rows with equal spans merge into one quad.
+func (d *DrawList) rowRuns(lo Vec2, h int, spans func(i int) [4]int, col uint32) {
+	sc := d.Scale
+	emit := func(start, end int, s [4]int) {
+		y0, y1 := lo.Y+float32(start)/sc, lo.Y+float32(end)/sc
+		quad := func(a, b int) {
+			if b > a {
+				d.fillRect(Vec2{lo.X + float32(a)/sc, y0}, Vec2{lo.X + float32(b)/sc, y1}, col)
+			}
+		}
+		if s[2] == 0 && s[3] == 0 {
+			quad(s[0], s[1])
+			return
+		}
+		quad(s[0], s[2])
+		quad(s[3], s[1])
+	}
+	start, cur := 0, spans(0)
+	for i := 1; i < h; i++ {
+		if s := spans(i); s != cur {
+			emit(start, i, cur)
+			start, cur = i, s
+		}
+	}
+	emit(start, h, cur)
 }
 
 // roundedSplitArea is the rect area from which rounded fills are split into
@@ -463,6 +572,10 @@ func (d *DrawList) AddRect(min, max Vec2, c colors.Color, rounding, thickness fl
 	}
 	h := thickness / 2
 	if d.outside(min.X-h, min.Y-h, max.X+h, max.Y+h) {
+		return
+	}
+	if d.Scale > 0 {
+		d.strokeRoundedRows(min, max, col, rounding, thickness, CornerAll)
 		return
 	}
 	w, ht := max.X-min.X, max.Y-min.Y
