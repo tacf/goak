@@ -618,6 +618,22 @@ func (d *DrawList) AddLine(a, b Vec2, c colors.Color, thickness float32) {
 	d.PathStroke(col, false, thickness)
 }
 
+// AddRectFilledMultiColor fills a rect with a color at each corner,
+// interpolated across it. Corners are top left, top right, bottom right and
+// bottom left.
+func (d *DrawList) AddRectFilledMultiColor(min, max Vec2, tl, tr, br, bl colors.Color) {
+	if !finite(min.X, min.Y, max.X, max.Y) || max.X <= min.X || max.Y <= min.Y || d.outside(min.X, min.Y, max.X, max.Y) {
+		return
+	}
+	d.prim(d.CurrentTexture(), 6, false)
+	a := d.vtx(min, [2]float32{}, Pack(tl))
+	d.vtx(Vec2{max.X, min.Y}, [2]float32{}, Pack(tr))
+	d.vtx(max, [2]float32{}, Pack(br))
+	d.vtx(Vec2{min.X, max.Y}, [2]float32{}, Pack(bl))
+	d.tri(a, a+1, a+2)
+	d.tri(a, a+2, a+3)
+}
+
 // AddTriangleFilled fills a triangle.
 func (d *DrawList) AddTriangleFilled(a, b, c Vec2, col colors.Color) {
 	p := Pack(col)

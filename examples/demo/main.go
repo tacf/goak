@@ -240,6 +240,7 @@ func (s *state) widgetsWindow(c *goak.Context, colorsList, files []string) {
 		}
 		scopeSection(c)
 		plotLinesSection(c)
+		colorSection(c)
 		c.SeparatorText("Context menu")
 		c.Text("Right click this text")
 		if c.BeginPopupContextItem("ctx") {
