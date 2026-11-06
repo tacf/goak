@@ -3,6 +3,7 @@ package goak
 import (
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/tacf/goak/internal/mathx"
 )
@@ -187,4 +188,246 @@ func (c *Context) DragFloat(label string, v *float32, speed, lo, hi float32, for
 	c.centerValue(frame, fmt.Sprintf(format, *v))
 	c.frameLabel(frame, text)
 	return changed
+}
+
+// labelAfter draws a frame-aligned label as its own item. Used by composite
+// widgets that lay out several frames before the label.
+func (c *Context) labelAfter(text string) {
+	if text == "" {
+		return
+	}
+	fp := c.Style.FramePadding
+	ts := c.TextSize(text)
+	r := c.ItemAdd(Vec2{X: ts.X, Y: ts.Y + 2*fp.Y})
+	if c.cur.skip {
+		return
+	}
+	c.DrawText(Vec2{X: r.Min.X, Y: r.Min.Y + fp.Y}, text, c.col(ColText))
+}
+
+// multi lays out n frames side by side that share CalcItemWidth, then the
+// label. each draws component i with the width already set.
+func (c *Context) multi(label string, n int, each func(i int) bool) bool {
+	text := DisplayLabel(label)
+	gap := c.Style.ItemInnerSpacing.X
+	total := c.CalcItemWidth()
+	w := max((total-gap*float32(n-1))/float32(n), 1)
+	c.PushID(label)
+	c.BeginGroup()
+	changed := false
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			c.SameLine(0, gap)
+		}
+		c.SetNextItemWidth(w)
+		if each(i) {
+			changed = true
+		}
+	}
+	if text != "" {
+		c.SameLine(0, c.Style.ItemInnerSpacing.X)
+		c.labelAfter(text)
+	}
+	c.EndGroup()
+	c.PopID()
+	return changed
+}
+
+func compID(i int) string { return "##" + strconv.Itoa(i) }
+
+// SliderFloat2 edits two floats in one row.
+func (c *Context) SliderFloat2(label string, v *[2]float32, lo, hi float32, format string) bool {
+	return c.multi(label, 2, func(i int) bool { return c.SliderFloat(compID(i), &v[i], lo, hi, format) })
+}
+
+// SliderFloat3 edits three floats in one row.
+func (c *Context) SliderFloat3(label string, v *[3]float32, lo, hi float32, format string) bool {
+	return c.multi(label, 3, func(i int) bool { return c.SliderFloat(compID(i), &v[i], lo, hi, format) })
+}
+
+// SliderFloat4 edits four floats in one row.
+func (c *Context) SliderFloat4(label string, v *[4]float32, lo, hi float32, format string) bool {
+	return c.multi(label, 4, func(i int) bool { return c.SliderFloat(compID(i), &v[i], lo, hi, format) })
+}
+
+// SliderInt2 edits two ints in one row.
+func (c *Context) SliderInt2(label string, v *[2]int, lo, hi int, format string) bool {
+	return c.multi(label, 2, func(i int) bool { return c.SliderInt(compID(i), &v[i], lo, hi, format) })
+}
+
+// SliderInt3 edits three ints in one row.
+func (c *Context) SliderInt3(label string, v *[3]int, lo, hi int, format string) bool {
+	return c.multi(label, 3, func(i int) bool { return c.SliderInt(compID(i), &v[i], lo, hi, format) })
+}
+
+// SliderInt4 edits four ints in one row.
+func (c *Context) SliderInt4(label string, v *[4]int, lo, hi int, format string) bool {
+	return c.multi(label, 4, func(i int) bool { return c.SliderInt(compID(i), &v[i], lo, hi, format) })
+}
+
+// DragFloat2 edits two floats in one row.
+func (c *Context) DragFloat2(label string, v *[2]float32, speed, lo, hi float32, format string) bool {
+	return c.multi(label, 2, func(i int) bool { return c.DragFloat(compID(i), &v[i], speed, lo, hi, format) })
+}
+
+// DragFloat3 edits three floats in one row.
+func (c *Context) DragFloat3(label string, v *[3]float32, speed, lo, hi float32, format string) bool {
+	return c.multi(label, 3, func(i int) bool { return c.DragFloat(compID(i), &v[i], speed, lo, hi, format) })
+}
+
+// DragFloat4 edits four floats in one row.
+func (c *Context) DragFloat4(label string, v *[4]float32, speed, lo, hi float32, format string) bool {
+	return c.multi(label, 4, func(i int) bool { return c.DragFloat(compID(i), &v[i], speed, lo, hi, format) })
+}
+
+// DragFloatRange2 edits a min and a max that never cross.
+func (c *Context) DragFloatRange2(label string, vmin, vmax *float32, speed, lo, hi float32, format string) bool {
+	return c.multi(label, 2, func(i int) bool {
+		if i == 0 {
+			ch := c.DragFloat(compID(0), vmin, speed, lo, hi, format)
+			if *vmin > *vmax {
+				*vmin = *vmax
+			}
+			return ch
+		}
+		ch := c.DragFloat(compID(1), vmax, speed, lo, hi, format)
+		if *vmax < *vmin {
+			*vmax = *vmin
+		}
+		return ch
+	})
+}
+
+// DragInt changes *v by speed per pixel of horizontal mouse motion. Pass
+// lo == hi for no limits. format defaults to "%d".
+func (c *Context) DragInt(label string, v *int, speed float32, lo, hi int, format string) bool {
+	if v == nil {
+		return false
+	}
+	if format == "" {
+		format = "%d"
+	}
+	id := c.ItemID(label)
+	frame, text, ok := c.sliderFrame(label)
+	if !ok {
+		return false
+	}
+	s := c.ButtonBehaviorEx(frame, id, 0)
+	accKey := hashStr("#DRAGACC", id)
+	acc := StateGet(c.States, accKey, float64(*v))
+	changed := false
+	if s.Started {
+		acc = float64(*v)
+		c.dragOffset.X = c.mouse().X
+	}
+	if c.activeID == id && s.Held && !s.Started {
+		mx := c.mouse().X
+		acc += float64(mx-c.dragOffset.X) * float64(speed)
+		c.dragOffset.X = mx
+		if lo != hi {
+			acc = math.Min(math.Max(acc, float64(lo)), float64(hi))
+		}
+		nv := int(math.Round(acc))
+		if nv != *v {
+			*v, changed = nv, true
+		}
+	}
+	StateSet(c.States, accKey, acc)
+	c.drawFrame(frame, c.frameColor(s, id, ColFrameBg, ColFrameBgHovered, ColFrameBgActive), c.focusID == id)
+	c.centerValue(frame, fmt.Sprintf(format, *v))
+	c.frameLabel(frame, text)
+	return changed
+}
+
+// SliderAngle edits an angle stored in radians and shown in degrees.
+func (c *Context) SliderAngle(label string, rad *float32, degMin, degMax float32, format string) bool {
+	if rad == nil {
+		return false
+	}
+	if format == "" {
+		format = "%.0f deg"
+	}
+	deg := *rad * 180 / math.Pi
+	if !c.SliderFloat(label, &deg, degMin, degMax, format) {
+		return false
+	}
+	*rad = deg * math.Pi / 180
+	return true
+}
+
+// vslider is the shared vertical slider behavior. t is the normalized value.
+func (c *Context) vslider(label string, size Vec2, t float32, value string) (nt float32, moved bool) {
+	id := c.ItemID(label)
+	r := c.ItemAdd(size)
+	if c.cur.skip {
+		return t, false
+	}
+	s := c.ButtonBehaviorEx(r, id, 0)
+	nt = t
+	if c.activeID == id && s.Held {
+		g := c.Style.GrabMinSize
+		span := r.Max.Y - r.Min.Y - g
+		if span > 0 {
+			nt = 1 - min(max((c.mouse().Y-r.Min.Y-g/2)/span, 0), 1)
+		}
+	}
+	c.drawFrame(r, c.frameColor(s, id, ColFrameBg, ColFrameBgHovered, ColFrameBgActive), c.focusID == id)
+	g := c.Style.GrabMinSize
+	gy := r.Min.Y + (r.Max.Y-r.Min.Y-g)*(1-nt)
+	gc := ColSliderGrab
+	if c.activeID == id {
+		gc = ColSliderGrabActive
+	}
+	c.cur.DL.AddRectFilled(Vec2{X: r.Min.X + 2, Y: gy + 2}, Vec2{X: r.Max.X - 2, Y: gy + g - 2}, c.col(gc), c.Style.GrabRounding)
+	ts := c.TextSize(value)
+	c.DrawText(Vec2{X: r.Min.X + (r.Max.X-r.Min.X-ts.X)/2, Y: r.Max.Y - ts.Y - 2}, value, c.col(ColText))
+	return nt, nt != t
+}
+
+// VSliderFloat is a vertical slider. The label only scopes the ID.
+func (c *Context) VSliderFloat(label string, size Vec2, v *float32, lo, hi float32, format string) bool {
+	if v == nil {
+		return false
+	}
+	if format == "" {
+		format = "%.3f"
+	}
+	t := float32(0)
+	if hi != lo && mathx.Finite32(*v) && mathx.Finite32(lo) && mathx.Finite32(hi) {
+		t = min(max((*v-lo)/(hi-lo), 0), 1)
+	}
+	nt, moved := c.vslider(label, size, t, fmt.Sprintf(format, *v))
+	if !moved || hi == lo {
+		return false
+	}
+	nv := lo + nt*(hi-lo)
+	if !mathx.Finite32(nv) || nv == *v {
+		return false
+	}
+	*v = nv
+	return true
+}
+
+// VSliderInt is a vertical int slider. The label only scopes the ID.
+func (c *Context) VSliderInt(label string, size Vec2, v *int, lo, hi int, format string) bool {
+	if v == nil {
+		return false
+	}
+	if format == "" {
+		format = "%d"
+	}
+	t := float32(0)
+	if hi != lo {
+		t = min(max(float32(*v-lo)/float32(hi-lo), 0), 1)
+	}
+	nt, moved := c.vslider(label, size, t, fmt.Sprintf(format, *v))
+	if !moved || hi == lo {
+		return false
+	}
+	nv := lo + int(math.Round(float64(nt)*float64(hi-lo)))
+	if nv == *v {
+		return false
+	}
+	*v = nv
+	return true
 }

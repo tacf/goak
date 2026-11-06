@@ -1,9 +1,12 @@
 package goak
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/tacf/goak/internal/mathx"
 	"github.com/tacf/goak/internal/textedit"
 )
 
@@ -453,4 +456,95 @@ func (c *Context) drawInput(e *textEdit, id ID, frame, inner Rect, spans [][2]in
 		gy := track.Min.Y + (th-gh)*e.scrollY/max(total-visH, 1)
 		dl.AddRectFilled(Vec2{X: track.Min.X, Y: gy}, Vec2{X: track.Max.X, Y: gy + gh}, c.col(ColScrollbarGrab), 1)
 	}
+}
+
+// numText is the text being edited in a numeric field.
+type numText struct {
+	s   string
+	set bool
+}
+
+// numInput draws a text field with optional -/+ buttons. cur formats the
+// value, apply parses text and reports whether it was valid, step nudges.
+func (c *Context) numInput(label string, hasStep bool, cur func() string, apply func(string) bool, step func(dir int), flags InputTextFlags) bool {
+	text := DisplayLabel(label)
+	c.PushID(label)
+	defer c.PopID()
+	fieldID := c.GetID("##field")
+	strKey := hashStr("#NUMTEXT", fieldID)
+	buf, kept := StateGet(c.States, strKey, numText{}).s, StateGet(c.States, strKey, numText{}).set
+	if c.focusID != fieldID || !kept {
+		buf = cur()
+	}
+	btn := c.frameHeight()
+	gap := c.Style.ItemInnerSpacing.X
+	w := c.CalcItemWidth()
+	if hasStep {
+		w -= 2 * (btn + gap)
+	}
+	changed := false
+	c.BeginGroup()
+	c.SetNextItemWidth(max(w, 1))
+	if c.InputText("##field", &buf, flags) && apply(buf) {
+		changed = true
+	}
+	if hasStep {
+		c.SameLine(0, gap)
+		if c.ArrowButton("##dec", DirLeft) {
+			step(-1)
+			buf, changed = cur(), true
+		}
+		c.SameLine(0, gap)
+		if c.ArrowButton("##inc", DirRight) {
+			step(1)
+			buf, changed = cur(), true
+		}
+	}
+	if text != "" {
+		c.SameLine(0, gap)
+		c.labelAfter(text)
+	}
+	c.EndGroup()
+	StateSet(c.States, strKey, numText{s: buf, set: c.focusID == fieldID})
+	return changed
+}
+
+// InputInt edits an int in a text field. A positive step adds -/+ buttons.
+func (c *Context) InputInt(label string, v *int, step int, flags InputTextFlags) bool {
+	if v == nil {
+		return false
+	}
+	return c.numInput(label, step > 0,
+		func() string { return strconv.Itoa(*v) },
+		func(s string) bool {
+			n, err := strconv.Atoi(strings.TrimSpace(s))
+			if err != nil {
+				return false
+			}
+			*v = n
+			return true
+		},
+		func(dir int) { *v += dir * step }, flags)
+}
+
+// InputFloat edits a float in a text field. A positive step adds -/+ buttons.
+// format defaults to "%.3f".
+func (c *Context) InputFloat(label string, v *float32, step float32, format string, flags InputTextFlags) bool {
+	if v == nil {
+		return false
+	}
+	if format == "" {
+		format = "%.3f"
+	}
+	return c.numInput(label, step > 0,
+		func() string { return fmt.Sprintf(format, *v) },
+		func(s string) bool {
+			f, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
+			if err != nil || !mathx.Finite32(float32(f)) {
+				return false
+			}
+			*v = float32(f)
+			return true
+		},
+		func(dir int) { *v += float32(dir) * step }, flags)
 }

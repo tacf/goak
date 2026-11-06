@@ -34,6 +34,17 @@ type state struct {
 	steps    int
 	drag     float32
 	progress float32
+	vec3     [3]float32
+	vec2     [2]float32
+	ints     [2]int
+	dragInt  int
+	rangeLo  float32
+	rangeHi  float32
+	angle    float32
+	vslider  float32
+	vint     int
+	inputInt int
+	inputF   float32
 	color    int
 	name     string
 	password string
@@ -60,6 +71,8 @@ func main() {
 	}
 
 	s := &state{featC: true, volume: 50, steps: 3, drag: 1, name: "goak", showTab2: true,
+		vec3: [3]float32{0.2, 0.5, 0.8}, vec2: [2]float32{1, 2}, ints: [2]int{3, 7}, dragInt: 20,
+		rangeLo: 0.2, rangeHi: 0.8, vslider: 0.4, vint: 3, inputInt: 10, inputF: 1.5,
 		notes: "Multiline text.\nSelect, copy and paste."}
 	if s.imageTex, err = b.NewTexture(64, 64, gradient(64)); err != nil {
 		log.Fatal(err)
@@ -195,6 +208,17 @@ func (s *state) widgetsWindow(c *goak.Context, colorsList, files []string) {
 			if s.progress > 1 {
 				s.progress = 0
 			}
+			c.SliderFloat3("Slider3", &s.vec3, 0, 1, "%.2f")
+			c.DragFloat2("Drag2", &s.vec2, 0.05, 0, 0, "%.2f")
+			c.SliderInt2("SliderInt2", &s.ints, 0, 10, "")
+			c.DragInt("DragInt", &s.dragInt, 0.5, 0, 100, "")
+			c.DragFloatRange2("Range", &s.rangeLo, &s.rangeHi, 0.01, 0, 1, "%.2f")
+			c.SliderAngle("Angle", &s.angle, -180, 180, "")
+			c.InputInt("InputInt", &s.inputInt, 1, 0)
+			c.InputFloat("InputFloat", &s.inputF, 0.1, "", 0)
+			c.VSliderFloat("##vf", goak.Vec2{X: 36, Y: 90}, &s.vslider, 0, 1, "%.2f")
+			c.SameLine(0, -1)
+			c.VSliderInt("##vi", goak.Vec2{X: 36, Y: 90}, &s.vint, 0, 10, "")
 			c.ProgressBar(s.progress, goak.Vec2{X: -1}, fmt.Sprintf("%d%%", int(s.progress*100)))
 		}
 		if c.CollapsingHeader("Combo and list") {
