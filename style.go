@@ -56,6 +56,9 @@ const (
 	ColPlotLinesHovered
 	ColPlotHistogram
 	ColPlotHistogramHovered
+	ColTableHeaderBg
+	ColTableBorder
+	ColTableRowBgAlt
 	ColCount
 )
 
@@ -158,6 +161,9 @@ func DarkStyle() Style {
 	c[ColPlotLinesHovered] = colors.RGB(255, 110, 90)
 	c[ColPlotHistogram] = colors.RGB(230, 180, 0)
 	c[ColPlotHistogramHovered] = colors.RGB(255, 150, 0)
+	c[ColTableHeaderBg] = colors.RGB(55, 65, 80)
+	c[ColTableBorder] = colors.RGB(80, 84, 92)
+	c[ColTableRowBgAlt] = colors.RGBA(255, 255, 255, 12)
 	return s
 }
 
@@ -207,5 +213,8 @@ func LightStyle() Style {
 	c[ColPlotLinesHovered] = colors.RGB(220, 70, 50)
 	c[ColPlotHistogram] = colors.RGB(200, 140, 0)
 	c[ColPlotHistogramHovered] = colors.RGB(230, 110, 0)
+	c[ColTableHeaderBg] = colors.RGB(205, 210, 220)
+	c[ColTableBorder] = colors.RGB(170, 175, 185)
+	c[ColTableRowBgAlt] = colors.RGBA(0, 0, 0, 14)
 	return s
 }

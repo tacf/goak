@@ -43,6 +43,7 @@ type Context struct {
 
 	disabled  int // BeginDisabled depth
 	groups    []groupState
+	tables    []*tableState
 	styleCols []styleColor
 
 	platform Backend // set by NewContext
