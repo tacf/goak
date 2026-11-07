@@ -242,6 +242,7 @@ func (s *state) widgetsWindow(c *goak.Context, colorsList, files []string) {
 		plotLinesSection(c)
 		colorSection(c)
 		tableSection(c)
+		plotSection(c)
 		c.SeparatorText("Context menu")
 		c.Text("Right click this text")
 		if c.BeginPopupContextItem("ctx") {
