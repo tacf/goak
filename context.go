@@ -94,6 +94,14 @@ type Context struct {
 	nextOpenCd Cond
 	tabBar     *tabBarState
 	noMinSize  bool
+
+	dockNodes     map[ID]*dockNode
+	dockWindows   map[ID]*dockNode
+	dockSerial    uint32
+	dockDragging  *Window
+	moveStart     Vec2
+	dockPreview   *draw.DrawList
+	floatingDocks []*dockNode
 }
 
 // Cond says when a SetNextWindow value applies.
@@ -241,7 +249,11 @@ func (c *Context) NewFrame(in *Input, display Vec2) {
 			if w.lastFrame != c.Frame-1 || w.skip || w.noInputs {
 				continue
 			}
-			if w.rect().Contains(m) {
+			if w.rect().Contains(m) && !c.dockHostPassesInput(w, m) {
+				if group := c.floatingDockRoot(w); group != nil && c.floatingDockGrip(group).Contains(m) {
+					c.hoveredWindow = group.host
+					break
+				}
 				c.hoveredWindow = w
 				break
 			}
@@ -256,6 +268,7 @@ func (c *Context) NewFrame(in *Input, display Vec2) {
 	c.lastItem = Rect{}
 	c.tabBar = nil
 	c.nextOpenOn = false
+	c.submitFloatingDocks()
 }
 
 // Render finishes the frame and returns the draw data, lists back to front,
@@ -270,6 +283,7 @@ func (c *Context) Render() *draw.DrawData {
 	}
 	in := c.In
 	left := MouseLeft
+	c.finishDockDrag()
 	if c.activeID != 0 && !c.activeSeen {
 		c.activeID, c.activeWindow = 0, nil
 	}
@@ -281,7 +295,8 @@ func (c *Context) Render() *draw.DrawData {
 		c.blankPress = false
 	}
 	c.lists = c.lists[:0]
-	for _, w := range c.layers() {
+	layers := c.layers()
+	for i, w := range layers {
 		if w.lastFrame != c.Frame || w.skip {
 			continue
 		}
@@ -289,6 +304,13 @@ func (c *Context) Render() *draw.DrawData {
 			c.Font.Finish(w.DL)
 		}
 		c.lists = append(c.lists, w.DL)
+		if group := c.floatingDockRoot(w); group != nil && group.grip != nil &&
+			(i+1 == len(layers) || c.floatingDockRoot(layers[i+1]) != group) {
+			c.lists = append(c.lists, group.grip)
+		}
+	}
+	if c.dockPreview != nil && len(c.dockPreview.Cmds) != 0 {
+		c.lists = append(c.lists, c.dockPreview)
 	}
 	c.dd.Lists = c.lists
 	c.dd.DisplaySize = draw.Vec2(c.DisplaySize)
@@ -320,6 +342,9 @@ func (c *Context) SetFocusID(id ID) { c.focusID = id }
 func (c *Context) LastItemRect() Rect { return c.lastItem }
 
 func (c *Context) bringToFront(w *Window) {
+	if group := c.floatingDockRoot(w); group != nil {
+		w = group.host
+	}
 	for i, o := range c.order {
 		if o == w {
 			copy(c.order[i:], c.order[i+1:])
@@ -375,6 +400,7 @@ func (c *Context) pruneWindows() {
 	dropped := false
 	for id, w := range c.windows {
 		if c.Frame-w.seenFrame > WindowMaxAge {
+			c.UndockWindow(w.Name)
 			delete(c.windows, id)
 			dropped = true
 		}

@@ -14,6 +14,7 @@ Features:
 - Pure Go font atlas built from any TTF or OTF, with a default font embedded
 - HiDPI aware, with the font rebuilt when the display scale changes
 - Windows with drag, resize, collapse, close, scrolling and stacking
+- Dock spaces with split panels, draggable dividers and docking previews
 - Button, checkbox, radio, sliders, drag, progress bar, images
 - Single and multiline text input with selection and clipboard
 - Combo, list box, popups, tooltips, menus, trees and tabs
@@ -25,6 +26,7 @@ Features:
 go run ./examples/basic
 go run ./examples/hello
 go run ./examples/windows
+go run ./examples/docking
 go run ./examples/demo
 ```
 
@@ -142,6 +144,28 @@ if ctx.BeginTabBar("tabs") {
 
 Widget IDs come from the label. Use `##` to hide part of a label and `###` to
 keep an ID stable while the text changes. `ctx.PushID` scopes repeated labels.
+
+### Docking panels
+
+Call `DockSpace` before drawing your panels each frame. Set up the initial
+layout once, then draw each panel with `Begin` and `End` as usual.
+
+```go
+root := ctx.DockSpace("Workspace", goak.Vec2{}, goak.Vec2{})
+if !initialized {
+    tools, editor := ctx.SplitDockNode(root, goak.DockLeft, 0.25)
+    ctx.DockWindow("Tools", tools)
+    ctx.DockWindow("Editor", editor)
+    initialized = true
+}
+```
+
+A zero size fills the remaining display space. Use `DockSpaceOverViewport`
+after submitting a main menu bar to fill the area below it.
+
+Drag a panel by its title bar to undock it or drop it onto a docking target.
+Drag the dividers to resize panels. See the [docking example](examples/docking)
+for a complete setup.
 
 ### Custom drawing and images
 

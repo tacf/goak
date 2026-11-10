@@ -41,9 +41,28 @@ const (
 // is reused.
 func (c *Context) layers() []*Window {
 	c.layerBuf = c.layerBuf[:0]
-	for _, w := range c.order {
-		if !w.top {
-			c.layerBuf = append(c.layerBuf, w)
+	for layer := 0; layer < 3; layer++ {
+		for _, w := range c.order {
+			if group := c.floatingDockRoot(w); group != nil {
+				if layer == 2 && w == group.host {
+					c.layerBuf = append(c.layerBuf, w)
+					for _, member := range c.order {
+						if member != w && c.floatingDockRoot(member) == group && !member.top {
+							c.layerBuf = append(c.layerBuf, member)
+						}
+					}
+				}
+				continue
+			}
+			wl := 2
+			if w.dockHost {
+				wl = 0
+			} else if w.docked {
+				wl = 1
+			}
+			if !w.top && wl == layer {
+				c.layerBuf = append(c.layerBuf, w)
+			}
 		}
 	}
 	n := len(c.layerBuf)

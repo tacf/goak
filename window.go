@@ -17,6 +17,7 @@ const (
 	NoScrollbar // children only
 	// MenuBar reserves a menu bar row under the title for BeginMenuBar.
 	MenuBar
+	NoDocking // excludes the window from dock spaces
 )
 
 // Window is a top level window or a child region.
@@ -82,9 +83,21 @@ type Window struct {
 	needBar  bool
 	childPad Vec2
 	outer    Rect
+
+	dockHost            bool
+	dockGroup           *dockNode
+	docked              bool
+	floatPos, floatSize Vec2
 }
 
 func (w *Window) rect() Rect { return Rect{Min: w.Pos, Max: w.Pos.Add(w.Size)} }
+
+func (w *Window) rounding(st *Style) float32 {
+	if w.docked || w.dockHost {
+		return 0
+	}
+	return st.WindowRounding
+}
 
 // SetNextWindowPos sets the position for the next Begin.
 func (c *Context) SetNextWindowPos(p Vec2, cond Cond) {
@@ -135,11 +148,17 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 
 	st := &c.Style
 	if open != nil && !*open {
+		c.UndockWindow(title)
 		w.skip = true
 		w.clip = Rect{}
 		return false
 	}
 	w.skip = false
+	docked := c.applyDock(w)
+	if w.skip {
+		w.clip = Rect{}
+		return false
+	}
 	w.lastFrame = c.Frame
 	w.titleH, w.menuH = 0, 0
 	if flags&NoTitleBar == 0 {
@@ -152,14 +171,16 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 	}
 	w.inMenu = false
 	pad := st.WindowPadding
-	if flags&AutoSize != 0 {
+	if flags&AutoSize != 0 && !docked {
 		if w.hasSize {
 			w.Size = w.ContentSize.Add(Vec2{X: 2 * pad.X, Y: 2*pad.Y + w.titleH + w.menuH})
 		} else {
 			w.Size = st.WindowMinSize
 		}
 	}
-	if c.noMinSize {
+	if docked {
+		w.collapsed = false
+	} else if c.noMinSize {
 		w.Size = w.Size.Max(Vec2{X: st.WindowMinSize.X})
 		c.noMinSize = false
 	} else {
@@ -171,7 +192,7 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 
 	mouse := c.mouse()
 	// Resize grip.
-	if flags&(NoResize|AutoSize) == 0 && !w.collapsed {
+	if flags&(NoResize|AutoSize) == 0 && !w.collapsed && !docked {
 		g := st.ResizeGripSize
 		r := w.rect()
 		grip := Rect{Min: Vec2{X: r.Max.X - g, Y: r.Max.Y - g}, Max: r.Max}
@@ -200,6 +221,10 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 			s := c.ButtonBehaviorEx(cr, c.GetID("#CLOSE"), BtnNoFocus)
 			if s.Pressed {
 				*open = false
+				c.UndockWindow(w.Name)
+				w.skip = true
+				w.clip = Rect{}
+				return false
 			}
 			closeR, closeHot, hasClose = cr, s.Hovered, true
 		}
@@ -207,17 +232,31 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 			s := c.ButtonBehaviorEx(dragArea, moveID, BtnNoFocus)
 			if s.Started {
 				c.dragOffset = mouse.Sub(w.Pos)
-				if c.In.MouseClicks[MouseLeft] >= 2 {
+				c.moveStart = mouse
+				if c.In.MouseClicks[MouseLeft] >= 2 && !docked {
 					c.toggleCollapse(w)
 				}
 			}
 			if s.Held {
-				w.Pos = mouse.Sub(c.dragOffset)
+				delta := mouse.Sub(c.moveStart)
+				moved := delta.X*delta.X+delta.Y*delta.Y > 16
+				if docked && moved {
+					x := c.dragOffset.X / max(w.Size.X, 1)
+					c.UndockWindow(w.Name)
+					c.dragOffset.X = max(0, min(x*w.Size.X, w.Size.X))
+					docked = false
+				}
+				if !docked {
+					w.Pos = mouse.Sub(c.dragOffset)
+					if moved && flags&NoDocking == 0 && !w.collapsed && !w.top {
+						c.dockDragging = w
+					}
+				}
 			}
 		}
 	}
 	// Body drag started by End on a previous frame, only for title-less windows.
-	if c.activeID == moveID && w.titleH == 0 {
+	if c.activeID == moveID && w.titleH == 0 && !docked {
 		c.activeSeen = true
 		if c.In.MouseDown[MouseLeft] {
 			w.Pos = mouse.Sub(c.dragOffset)
@@ -235,7 +274,7 @@ func (c *Context) Begin(title string, open *bool, flags WindowFlags) bool {
 	if w.collapsed {
 		w.clip = Rect{}
 		if st.BorderSize > 0 && flags&NoBackground == 0 {
-			w.DL.AddRect(w.Pos, w.Pos.Add(w.Size), c.col(ColBorder), st.WindowRounding, st.BorderSize)
+			w.DL.AddRect(w.Pos, w.Pos.Add(w.Size), c.col(ColBorder), w.rounding(st), st.BorderSize)
 		}
 		return false
 	}
@@ -273,7 +312,7 @@ func (c *Context) drawChrome(w *Window, closeR Rect, closeHot, hasClose bool) {
 	dl := w.DL
 	r := w.rect()
 	if w.Flags&NoBackground == 0 {
-		dl.AddRectFilled(r.Min, r.Max, c.col(ColWindowBg), st.WindowRounding)
+		dl.AddRectFilled(r.Min, r.Max, c.col(ColWindowBg), w.rounding(st))
 	}
 	if w.titleH > 0 {
 		col := c.col(ColTitleBg)
@@ -281,7 +320,7 @@ func (c *Context) drawChrome(w *Window, closeR Rect, closeHot, hasClose bool) {
 			col = c.col(ColTitleBgActive)
 		}
 		corners := draw.CornerTopLeft | draw.CornerTopRight
-		dl.AddRectFilledEx(r.Min, Vec2{X: r.Max.X, Y: r.Min.Y + w.titleH}, col, st.WindowRounding, corners)
+		dl.AddRectFilledEx(r.Min, Vec2{X: r.Max.X, Y: r.Min.Y + w.titleH}, col, w.rounding(st), corners)
 		c.DrawText(Vec2{X: r.Min.X + st.FramePadding.X, Y: r.Min.Y + st.FramePadding.Y}, DisplayLabel(w.Name), c.col(ColText))
 	}
 	if hasClose {
@@ -312,14 +351,14 @@ func (c *Context) End() {
 		st := &c.Style
 		r := w.rect()
 		if st.BorderSize > 0 && w.Flags&NoBackground == 0 && !w.collapsed {
-			w.DL.AddRect(r.Min, r.Max, c.col(ColBorder), st.WindowRounding, st.BorderSize)
+			w.DL.AddRect(r.Min, r.Max, c.col(ColBorder), w.rounding(st), st.BorderSize)
 		}
-		if w.Flags&(NoResize|AutoSize) == 0 && !w.collapsed {
+		if w.Flags&(NoResize|AutoSize) == 0 && !w.collapsed && !w.docked {
 			c.drawGrip(w)
 		}
 		// Press on empty window body moves title-less windows.
 		moveID := hashStr("#MOVE", w.ID)
-		if w.titleH == 0 && w.Flags&NoMove == 0 && c.activeID == 0 && !c.pressClaimed &&
+		if w.titleH == 0 && w.Flags&NoMove == 0 && !w.docked && c.activeID == 0 && !c.pressClaimed &&
 			c.In.MousePress[MouseLeft] && c.hoveredWindow == w && r.Contains(c.mouse()) {
 			c.activeID, c.activeWindow, c.pressClaimed = moveID, w, true
 			c.activeSeen = true
@@ -330,6 +369,10 @@ func (c *Context) End() {
 }
 
 func (c *Context) drawGrip(w *Window) {
+	c.drawGripTo(w, w.DL)
+}
+
+func (c *Context) drawGripTo(w *Window, dl *draw.DrawList) {
 	g := c.Style.ResizeGripSize
 	r := w.rect()
 	id := hashStr("#RESIZE", w.ID)
@@ -343,7 +386,7 @@ func (c *Context) drawGrip(w *Window) {
 	// Inset by the border so the grip does not paint over it.
 	b := c.Style.BorderSize
 	br := Vec2{X: r.Max.X - b, Y: r.Max.Y - b}
-	w.DL.AddTriangleFilled(Vec2{X: br.X, Y: br.Y - g}, br, Vec2{X: br.X - g, Y: br.Y}, col)
+	dl.AddTriangleFilled(Vec2{X: br.X, Y: br.Y - g}, br, Vec2{X: br.X - g, Y: br.Y}, col)
 }
 
 func (c *Context) popWindow() {
